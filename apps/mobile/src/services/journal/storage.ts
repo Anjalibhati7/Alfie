@@ -4,10 +4,14 @@
  * Everything here stays on the device. Nothing is uploaded, and no credentials
  * or audio are ever written. The backend never sees a Field Log entry.
  *
- * Storage uses `localStorage` when the runtime provides it (browser and Expo
- * web builds). Where it is unavailable the log lives in memory for the current
- * run only, and `isPersistent()` reports that honestly so the UI can say so.
+ * Storage is device-local on both platforms, behind `backend.native.ts` (a JSON
+ * file in the app document directory) and `backend.web.ts` (`localStorage`).
+ * Where neither works, the log lives in memory for the current run only and
+ * `isPersistent()` reports that honestly so the UI can say so instead of
+ * implying a save.
  */
+
+import { createJournalBackend } from './backend';
 
 export type JournalMode = 'Discover' | 'Reimagine';
 
@@ -47,28 +51,22 @@ export type JournalSession = {
   simulatedLocation: boolean;
 };
 
-const STORAGE_KEY = 'alfie.field-log.v1';
 const MAX_SESSIONS = 25;
 
-let memoryFallback: JournalSession[] = [];
+/**
+ * Platform storage: a JSON file in the app document directory on native, and
+ * `localStorage` on web. Both are device-local; neither uploads anything.
+ */
+const backend = createJournalBackend();
 
-function storage(): Storage | null {
-  try {
-    const candidate = globalThis.localStorage;
-    if (!candidate) return null;
-    // A write probe catches private-mode implementations that throw.
-    const probe = `${STORAGE_KEY}.probe`;
-    candidate.setItem(probe, '1');
-    candidate.removeItem(probe);
-    return candidate;
-  } catch {
-    return null;
-  }
+/** True when entries survive an app restart on this device. */
+export function isPersistent(): boolean {
+  return backend.persistent;
 }
 
-/** True when entries survive an app reload on this device. */
-export function isPersistent(): boolean {
-  return storage() !== null;
+/** Honest, plain-language description of where entries are kept. */
+export function storageLabel(): string {
+  return backend.label;
 }
 
 function isSession(value: unknown): value is JournalSession {
@@ -83,10 +81,8 @@ function isSession(value: unknown): value is JournalSession {
 }
 
 export function loadSessions(): JournalSession[] {
-  const store = storage();
-  if (!store) return [...memoryFallback];
   try {
-    const raw = store.getItem(STORAGE_KEY);
+    const raw = backend.read();
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -111,16 +107,7 @@ function normalise(session: JournalSession): JournalSession {
 
 export function writeSessions(sessions: JournalSession[]): JournalSession[] {
   const trimmed = sessions.slice(0, MAX_SESSIONS);
-  const store = storage();
-  if (!store) {
-    memoryFallback = trimmed;
-    return trimmed;
-  }
-  try {
-    store.setItem(STORAGE_KEY, JSON.stringify(trimmed));
-  } catch {
-    memoryFallback = trimmed;
-  }
+  backend.write(JSON.stringify(trimmed));
   return trimmed;
 }
 
@@ -139,7 +126,8 @@ export function deleteSession(id: string): JournalSession[] {
 }
 
 export function clearAllSessions(): JournalSession[] {
-  return writeSessions([]);
+  backend.clear();
+  return [];
 }
 
 export function createSessionId(): string {

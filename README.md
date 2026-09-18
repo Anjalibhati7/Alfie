@@ -9,6 +9,7 @@ Two modes only: **Discover** (the world leads — observational, sparse promptin
 ## What works today
 
 - **Live speech-to-speech voice** through Boson **Higgs Realtime**, proxied by the agent service so the API key never reaches the device.
+- **Runs on real mobile.** Native iOS/Android is the primary target and captures audio with `react-native-audio-api`; the web build is a fallback and uses `getUserMedia`. Metro selects one at build time.
 - **Visible `Listening` / `Thinking` / `Speaking` state** driven by real provider events, plus barge-in: speaking over Alfie stops playback immediately.
 - **Mode-specific behaviour** enforced server-side. `Discover` and `Reimagine` have different instructions, and the client cannot override them.
 - **Location providers**: a simulated demo route for indoor demos, and an approximate real-device provider. The current place and the places visited are shown in the session.
@@ -37,15 +38,27 @@ npm ci
 # 1. Start the agent with the Boson key. The key stays in this shell only.
 BOSON_API_KEY=bai-xxxxxxxx npm run agent
 
-# 2. In a second terminal, start the mobile app and press w for web.
-npm run mobile
+# 2. Build and run the app on a device or simulator (the primary target).
+#    react-native-audio-api is a native module, so this needs a development
+#    build — it does not work in Expo Go.
+npx expo run:ios        # or: npx expo run:android
+#    Afterwards, `npm run mobile` + `i` / `a` reuses that dev build.
+
+#    Web fallback, no native toolchain needed:
+npm run mobile          # then press w
 
 # Optional, before any of the above: prove the key and endpoint work with no
 # microphone or speaker involved.
 BOSON_API_KEY=bai-xxxxxxxx npm run probe --workspace @alfie/agent
 ```
 
-Then, in the browser:
+On a physical device the app must reach the agent on your machine, so set:
+
+```sh
+EXPO_PUBLIC_AGENT_URL=http://<your-lan-ip>:8080 npm run mobile
+```
+
+Then:
 
 1. Pick **Discover** or **Reimagine** on the home screen and allow the microphone.
 2. Wait for the state to read **Listening**, then talk. Alfie replies out loud; the on-screen state follows the real conversation.
@@ -53,7 +66,7 @@ Then, in the browser:
 4. Watch **Where you are** change as the demo route walks. Switch between **Demo route** and **This device** at any time.
 5. Press **Save a thought or discovery** to keep something, then **End session**. The Field Log shows the completed session with its duration, themes, and route.
 
-For an indoor hackathon demo, leave location on **Demo route**: it walks eight nearby points, one every eight seconds, and labels itself as simulated everywhere it appears.
+For an indoor hackathon demo, leave location on **Demo route**: it walks seven nearby points, one every eight seconds, and labels itself as simulated everywhere it appears.
 
 `npm run build:agent` builds the service; `npm run start --workspace @alfie/agent` runs the built output.
 
@@ -80,20 +93,20 @@ Verify the deploy command against your installed CLI version — it could not be
 
 - `BOSON_API_KEY` is read only from the server environment. It is never in mobile code, the bundle, Git, or logs. `.env` files are gitignored; `.env.example` is value-free.
 - Mobile holds no provider credentials at all. `EXPO_PUBLIC_*` values are public by definition.
-- Raw microphone audio is streamed only. Nothing writes audio to disk, and no audio is logged. Capture starts only when the user starts a session, and stops on pause, end, background, or error.
+- **Raw microphone audio is streamed only.** On native the recorder's file output is explicitly disabled; nothing writes audio to disk and no audio is logged. Capture starts only when the user starts a session, and stops on pause, end, background, or error. The Expo config sets `iosBackgroundMode: false` and `androidForegroundService: false`, so no background audio capability is granted.
 - The spoken transcript is shown during the session and is not stored or uploaded.
 - Location is foreground-only and session-scoped. No background tracking, no coordinate history, never a raw coordinate on screen. Coordinates are rounded to ~4 decimal places before use.
-- Field Log entries live on the device only and can be edited or deleted there. The backend never receives them.
+- Field Log entries live on the device only — a JSON file in the app document directory on native, `localStorage` on web — and can be edited or deleted there. The backend never receives them.
 
 ## Honest limitations
 
-- **Live voice is verified on the web target only.** Audio uses the Web Audio API. A native development build needs a native capture/playback implementation; without one the app reports voice as unavailable rather than crashing. This is the single biggest gap for a phone demo.
-- **Real-device location is approximate and unnamed.** `expo-location` is not installed, so the real provider reads the platform Geolocation API if present and reports a neutral label. It never invents place names.
+- **Native is the primary target and is verified at bundle level, not on a device.** Live voice captures through `react-native-audio-api` on iOS/Android and `getUserMedia` on web, selected by Metro at build time; both bundles were inspected to confirm each contains only its own path. No physical device or simulator was available in this environment, so the native microphone, speaker, and permission prompts have **not** been exercised end to end. Treat the first run on hardware as the real acceptance test.
+- **Native live voice requires a development build.** `react-native-audio-api` is a native module, so Expo Go cannot capture audio. The app detects this and reports voice as unavailable rather than crashing.
+- **Real-device location is approximate and unnamed.** `expo-location` is not installed, so the real provider reads the platform Geolocation API if present and reports a neutral label. On native it degrades to `denied`/`unavailable` unless the app already holds a grant. It never invents place names.
 - **Discussion themes are a word-frequency heuristic**, computed on the device from your own words. They are not an AI summary, and a quiet session produces none.
-- **Field Log persistence uses `localStorage`.** Where the runtime does not provide it, entries last for the current run only and the UI says so instead of pretending to save.
 - **No authentication.** There is no identity layer yet; the agent service has no per-user authorization and no rate limiting. Do not expose it publicly with a live key.
 - **No InsForge, no Maps, no cloud persistence, no Nebius, no search or social features.** Those remain unimplemented by design.
-- **Barge-in was implemented against the documented `input_audio_buffer.speech_started` event** and could not be exercised end to end here, because no `BOSON_API_KEY` was available in this environment. Treat the first live run as the real acceptance test.
+- **A live Higgs session has never run.** No `BOSON_API_KEY` was available in this environment, so barge-in and the upstream handshake are implemented against the documented `input_audio_buffer.speech_started` / OpenAI-compatible protocol but are unexercised. Run the probe first.
 - A session pauses when the app leaves the foreground, and the timer excludes paused time.
 
 ## Other documentation

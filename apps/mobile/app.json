@@ -6,7 +6,19 @@
     "scheme": "alfie",
     "orientation": "default",
     "userInterfaceStyle": "light",
-    "plugins": ["expo-router"],
+    "plugins": [
+      "expo-router",
+      [
+        "react-native-audio-api",
+        {
+          "iosMicrophonePermission": "Alfie uses the microphone only while you have an active session open, so you can talk with it out loud. Audio is streamed for the conversation and is never saved. You can pause or end the session at any time.",
+          "iosBackgroundMode": false,
+          "androidPermissions": ["android.permission.RECORD_AUDIO"],
+          "androidForegroundService": false,
+          "androidFSTypes": []
+        }
+      ]
+    ],
     "web": {
       "bundler": "metro",
       "output": "single"

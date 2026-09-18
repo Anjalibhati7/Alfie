@@ -2,9 +2,23 @@
 
 Expo SDK 57 + React Native + strict TypeScript + Expo Router. Routes: home (`/`), the live session (`/session`), and the Field Log (`/field-log`). Discover and Reimagine are the only modes.
 
-Live voice now runs end to end: the microphone streams to the Alfie agent service, which proxies Boson **Higgs Realtime** for speech-to-speech conversation. The session screen shows the real `Listening` / `Thinking` / `Speaking` state, supports barge-in, and surfaces connection errors with a retry.
+Live voice runs end to end on **both native and web**: the microphone streams to the Alfie agent service, which proxies Boson **Higgs Realtime** for speech-to-speech conversation. The session screen shows the real `Listening` / `Thinking` / `Speaking` state, supports barge-in, and surfaces connection errors with a retry.
 
-From the repository root, run `npm ci`, start the agent (`npm run agent`), then `npm run mobile`. Press `w` for web (the verified demo path for live voice), or `i` / `a` for a configured simulator.
+Native (iOS/Android) is the primary target and uses `react-native-audio-api`; web uses `getUserMedia` and is the fallback. Metro picks one at build time.
+
+From the repository root, run `npm ci`, start the agent (`npm run agent`), then:
+
+```sh
+# Native, the primary target. Requires a development build, NOT Expo Go.
+npm run mobile
+#   then press i or a, or build a dev client:
+npx expo run:ios      # or: npx expo run:android
+
+# Web fallback
+npm run mobile        # then press w
+```
+
+Live voice needs a development build because `react-native-audio-api` is a native module. In Expo Go the app still runs and reports voice as unavailable instead of crashing.
 
 - `src/app`: Router routes and root layout.
 - `src/components`: shared presentation primitives.
@@ -26,7 +40,7 @@ Run `npm run lint` and `npm run typecheck` at the repository root.
 
 ## Known limitations
 
-- Live voice uses the Web Audio API, so it is verified on the **web** target. A native development build needs a native capture/playback implementation; without one, the app reports that voice is unavailable instead of crashing.
+- Live voice has two capture paths selected at build time: native (`react-native-audio-api`) and web (`getUserMedia`). The native path requires a development build; it is verified at bundle level but has not been run on a physical device from this environment.
 - The spoken transcript is shown for the current session only. It is not stored and not uploaded.
-- The Field Log is stored on the device via `localStorage`; where that is unavailable, entries last for the current run only and the app says so.
+- The Field Log is device-local on both platforms: a JSON file in the app document directory on native (`expo-file-system`), and `localStorage` on web. Where neither works, entries last for the current run only and the app says so rather than implying a save.
 - A session pauses when the app leaves the foreground. The timer excludes paused time.
