@@ -1,0 +1,10 @@
+node_modules/
+dist/
+build/
+.expo/
+.insta/
+.agents/
+.claude/
+.codex/
+package-lock.json
+skills-lock.json

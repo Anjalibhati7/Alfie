@@ -1,0 +1,40 @@
+# Dependencies and build outputs
+node_modules/
+.expo/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.mobileprovision
+*.jks
+*.keystore
+
+# InstaCloud: keep shareable .insta/project.json visible
+.insta/agent-session.json
+.insta/observe/
+.insta/audit.jsonl
+.agents/skills/
+.claude/skills/
+.github/skills/
+skills-lock.json
+
+# Local machine/editor files
+.DS_Store
+.idea/
+*.log
+*.swp
+*.swo
+
+# Local: the control plane this machine linked against
+.insta/link-plane.json
+
+.insta/.agent-session-*.tmp
