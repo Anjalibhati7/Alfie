@@ -19,7 +19,7 @@ import {
 } from '../location/context.js';
 import { explainClose } from './closeCodes.js';
 import { parseEvent, type ServerEvent } from './protocol.js';
-import { buildInstructions, buildLocationNote, type Mode } from './prompt.js';
+import { buildInstructions, type Mode } from './prompt.js';
 
 export type SessionDeps = {
   config: Config;
@@ -66,6 +66,12 @@ type SessionState = {
   outputDeltas: number;
   /** Audio held until the provider confirms the session. */
   pendingAudio: Record<string, unknown>[];
+  /**
+   * The last full session configuration sent upstream. Re-sent with refreshed
+   * instructions when the user's surroundings change, because the provider
+   * rejects system-role conversation items.
+   */
+  baseSession: Record<string, unknown> | null;
 };
 
 /** How long to wait for the provider to acknowledge a session. */
@@ -99,6 +105,7 @@ export class RealtimeSession {
       appendChunks: 0,
       outputDeltas: 0,
       pendingAudio: [],
+      baseSession: null,
     };
 
     const url = new URL(deps.config.bosonRealtimeUrl);
@@ -294,6 +301,23 @@ export class RealtimeSession {
         this.send(frame);
       }
     }
+
+    // The browser reports its first place as soon as the session starts, which
+    // is usually before the provider confirms it. That update was recorded but
+    // could not be applied yet, so it is folded into the instructions now.
+    if (this.state.location && this.state.baseSession) {
+      this.deps.log({
+        event: 'location.applied_on_establish',
+        placeId: this.state.location.id,
+      });
+      this.sendSessionUpdate({
+        ...this.state.baseSession,
+        instructions: buildInstructions({
+          mode: this.state.mode,
+          location: this.state.location,
+        }),
+      });
+    }
   }
 
   private handleUpstreamOpen(): void {
@@ -338,6 +362,7 @@ export class RealtimeSession {
 
   /** Sends session.update and records exactly what was configured. */
   private sendSessionUpdate(session: Record<string, unknown>): void {
+    this.state.baseSession = session;
     const audio = session.audio as Record<string, unknown> | undefined;
     const input = audio?.input as Record<string, unknown> | undefined;
     const output = audio?.output as Record<string, unknown> | undefined;
@@ -384,16 +409,24 @@ export class RealtimeSession {
     if (location.id === this.state.lastLocationId) return;
     this.state.lastLocationId = location.id;
 
-    if (!this.state.closed) {
-      this.send({
-        type: 'conversation.item.create',
-        item: {
-          type: 'message',
-          role: 'system',
-          content: [{ type: 'input_text', text: buildLocationNote(location) }],
-        },
+    // Higgs Realtime rejects `system`-role conversation items:
+    //   "conversation.item.create supports text content only ... and
+    //    system-role messages are rejected."
+    // Sending one produced an error event and killed the session the moment the
+    // browser reported its first place. Instructions are the supported way to
+    // change agent context mid-session, so the location is folded into a
+    // refreshed session.update instead.
+    const base = this.state.baseSession;
+    if (!this.state.closed && base && this.state.established) {
+      this.sendSessionUpdate({
+        ...base,
+        instructions: buildInstructions({
+          mode: this.state.mode,
+          location,
+        }),
       });
     }
+
     this.deps.send({
       type: 'alfie.location.ack',
       id: location.id,
