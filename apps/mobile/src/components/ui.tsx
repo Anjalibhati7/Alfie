@@ -6,7 +6,14 @@ import {
   View,
   type TextProps,
 } from 'react-native';
-import { colors, spacing, typography, border, radius } from '../design/tokens';
+import {
+  colors,
+  semanticColors,
+  spacing,
+  typography,
+  border,
+  radius,
+} from '../design/tokens';
 import { primaryTouchTarget } from '../accessibility/constants';
 
 export function Copy({
@@ -44,6 +51,7 @@ export function Button({
   expanded,
   selected,
   hint,
+  accessibilityLabel,
 }: {
   label: string;
   onPress: () => void;
@@ -52,6 +60,12 @@ export function Button({
   expanded?: boolean;
   selected?: boolean;
   hint?: string;
+  /**
+   * Overrides the spoken name only. Used where several controls share a short
+   * visible label (for example two "Start" buttons) so screen reader users can
+   * still tell them apart.
+   */
+  accessibilityLabel?: string;
 }) {
   const [focused, setFocused] = useState(false);
   return (
@@ -61,7 +75,7 @@ export function Button({
       onBlur={() => setFocused(false)}
       disabled={disabled}
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={accessibilityLabel ?? label}
       accessibilityHint={hint}
       accessibilityState={{ disabled, expanded, selected }}
       style={({ pressed }) => [
@@ -69,7 +83,7 @@ export function Button({
         primary && styles.primary,
         selected && styles.selected,
         focused && styles.focused,
-        pressed && styles.pressed,
+        pressed && (primary ? styles.primaryPressed : styles.pressed),
         disabled && styles.disabled,
       ]}
     >
@@ -129,10 +143,15 @@ const styles = StyleSheet.create({
   },
   buttonText: { fontWeight: '600', textAlign: 'center' },
   primary: {
-    backgroundColor: colors.terracotta,
-    borderColor: colors.terracotta,
+    backgroundColor: semanticColors.action,
+    borderColor: semanticColors.action,
   },
-  primaryText: { color: colors.porcelain },
+  /** Pressed primary deepens to Ink rather than changing hue. */
+  primaryPressed: {
+    backgroundColor: semanticColors.actionPressed,
+    borderColor: semanticColors.actionPressed,
+  },
+  primaryText: { color: semanticColors.onAction },
   selected: { backgroundColor: colors.powder, borderWidth: border.focus },
   focused: { outlineWidth: 3, outlineColor: colors.yale, outlineOffset: 3 },
   pressed: { borderWidth: 3 },

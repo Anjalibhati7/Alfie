@@ -1,18 +1,23 @@
 import { Platform } from 'react-native';
 
+/**
+ * The palette is exactly four values. There is no accent colour: emphasis comes
+ * from typography, whitespace, and structure rather than hue.
+ */
 export const colors = {
   ink: '#0D1821',
   yale: '#344966',
   powder: '#B4CDED',
   porcelain: '#F0F4EF',
-  terracotta: '#A24C3F',
 } as const;
 export const semanticColors = {
   background: colors.porcelain,
   text: colors.ink,
   secondaryText: colors.yale,
   subtleSurface: colors.powder,
-  action: colors.terracotta,
+  /** Primary actions are Yale Blue; pressed deepens to Ink. */
+  action: colors.yale,
+  actionPressed: colors.ink,
   onAction: colors.porcelain,
   divider: colors.yale,
   focus: colors.yale,

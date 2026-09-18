@@ -316,7 +316,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.xl,
     gap: spacing.lg,
     borderLeftWidth: 2,
-    borderLeftColor: colors.terracotta,
+    borderLeftColor: colors.ink,
     paddingLeft: spacing.lg,
   },
   trail: {
@@ -330,7 +330,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.xl,
     gap: spacing.lg,
     borderLeftWidth: 2,
-    borderLeftColor: colors.terracotta,
+    borderLeftColor: colors.ink,
     paddingLeft: spacing.lg,
   },
 });
