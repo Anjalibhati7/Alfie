@@ -73,11 +73,19 @@ const DEMO_ROUTE: readonly DemoPoint[] = [
 /** Simulated movement, so every point reports the same coarse activity. */
 const DEMO_ACTIVITY = 'walking' as const;
 
+/**
+ * The area the simulated route sits in. These coordinates are in the
+ * Embarcadero area of San Francisco, so naming it is honest for the demo; the
+ * route itself is invented and every point is labelled as simulated.
+ */
+const DEMO_AREA = 'The Embarcadero';
+
 function pointContext(index: number, point: DemoPoint): PlaceContext {
   return Object.freeze({
     id: `demo-${String(index + 1)}`,
     label: point.label,
     detail: point.detail,
+    area: DEMO_AREA,
     activity: DEMO_ACTIVITY,
     simulated: true,
     coarseCoordinates: point.coordinates,

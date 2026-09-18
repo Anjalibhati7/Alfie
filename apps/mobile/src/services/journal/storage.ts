@@ -21,11 +21,10 @@ export type JournalThought = {
   createdAt: string;
 };
 
-export type JournalTheme = {
-  /** Short label, drawn from the user's own words. */
+export type JournalMoment = {
+  /** Milliseconds from the start of the session. */
+  atMs: number;
   label: string;
-  /** The sentence the label came from, for context. */
-  detail: string;
 };
 
 export type JournalRoutePoint = {
@@ -35,6 +34,14 @@ export type JournalRoutePoint = {
   simulated: boolean;
 };
 
+/**
+ * One outing, remembered.
+ *
+ * This is deliberately a record of the walk and not of the conversation: there
+ * is no transcript field, and there never should be. `observations`, `themes`,
+ * and `moments` are derived once when the session ends (see `summarise.ts`) and
+ * are the only trace of what was said.
+ */
 export type JournalSession = {
   id: string;
   mode: JournalMode;
@@ -42,8 +49,15 @@ export type JournalSession = {
   /** Null while the session is still open. */
   endedAt: string | null;
   durationMs: number;
+  /** Where the outing happened, e.g. "The Embarcadero". Null when unknown. */
+  placeLabel: string | null;
+  /** "You noticed" — short observational phrases. */
+  observations: string[];
+  /** "Conversation themes" — concise topic labels. */
+  themes: string[];
+  /** "Moments" — timestamped points from the walk. */
+  moments: JournalMoment[];
   thoughts: JournalThought[];
-  themes: JournalTheme[];
   route: JournalRoutePoint[];
   /** Number of completed assistant turns, used only as a light activity signal. */
   voiceTurns: number;
@@ -92,14 +106,59 @@ export function loadSessions(): JournalSession[] {
   }
 }
 
+/**
+ * Accepts records written by earlier versions.
+ *
+ * Sessions saved before the Field Log became a memory of the outing stored
+ * themes as `{label, detail}` objects and had no observations or moments. They
+ * are upgraded in place rather than discarded, so an existing log survives.
+ */
 function normalise(session: JournalSession): JournalSession {
+  const route = Array.isArray(session.route) ? session.route : [];
+  const rawThemes: unknown[] = Array.isArray(session.themes)
+    ? (session.themes as unknown[])
+    : [];
+
+  const themes = rawThemes
+    .map((theme) => {
+      if (typeof theme === 'string') return theme;
+      if (typeof theme === 'object' && theme !== null) {
+        const label = (theme as { label?: unknown }).label;
+        if (typeof label === 'string') return label;
+      }
+      return null;
+    })
+    .filter((label): label is string => Boolean(label && label.trim()));
+
+  const moments = (Array.isArray(session.moments) ? session.moments : [])
+    .filter(
+      (moment): moment is JournalMoment =>
+        typeof moment === 'object' &&
+        moment !== null &&
+        typeof (moment as JournalMoment).label === 'string' &&
+        typeof (moment as JournalMoment).atMs === 'number',
+    )
+    .sort((a, b) => a.atMs - b.atMs);
+
   return {
     ...session,
     endedAt: session.endedAt ?? null,
     durationMs: typeof session.durationMs === 'number' ? session.durationMs : 0,
+    // Fall back to the first place visited so an older record still shows where.
+    placeLabel:
+      typeof session.placeLabel === 'string' && session.placeLabel.trim()
+        ? session.placeLabel
+        : (route[0]?.label ?? null),
+    observations: (Array.isArray(session.observations)
+      ? session.observations
+      : []
+    ).filter(
+      (item): item is string => typeof item === 'string' && !!item.trim(),
+    ),
+    themes,
+    moments,
     thoughts: Array.isArray(session.thoughts) ? session.thoughts : [],
-    themes: Array.isArray(session.themes) ? session.themes : [],
-    route: Array.isArray(session.route) ? session.route : [],
+    route,
     voiceTurns: typeof session.voiceTurns === 'number' ? session.voiceTurns : 0,
     simulatedLocation: session.simulatedLocation === true,
   };
@@ -139,3 +198,16 @@ export function createThoughtId(): string {
   const random = Math.random().toString(36).slice(2, 8);
   return `t${Date.now().toString(36)}${random}`;
 }
+
+/** Finds one session by id, or undefined when it is not in the log. */
+export function findSession(id: string): JournalSession | undefined {
+  return loadSessions().find((session) => session.id === id);
+}
+
+// Display formatting lives in format.ts so it stays free of storage imports.
+export {
+  durationLabel,
+  longDateLabel,
+  offsetLabel,
+  relativeDayLabel,
+} from './format';

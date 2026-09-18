@@ -27,7 +27,7 @@ import {
   type JournalSession,
   type JournalThought,
 } from '../services/journal/storage';
-import { deriveThemes } from '../services/journal/themes';
+import { summariseSession } from '../services/journal/summarise';
 import {
   isRealLocationAvailable,
   resolveLocationProvider,
@@ -86,6 +86,10 @@ function useSessionModel() {
   const elapsedRef = useRef(0);
   const activeRef = useRef(false);
   const routeCount = useRef(0);
+  /** Places visited, kept in a ref so finish() does not depend on render state. */
+  const trailRef = useRef<PlaceContext[]>([]);
+  /** When each turn happened, by turn id. Drives the timestamped Moments list. */
+  const turnTimesRef = useRef<Map<string, number>>(new Map());
 
   /** Storage is the source of truth for the journal; React state mirrors it. */
   const patchActiveSession = useCallback(
@@ -131,6 +135,7 @@ function useSessionModel() {
         setLocationStatus(snapshot.status);
         setPlace(snapshot.place);
         setTrail(snapshot.trail);
+        trailRef.current = snapshot.trail;
         setLocationLabel(provider.statusLabel());
         if (snapshot.place) realtime.current?.updateLocation(snapshot.place);
         if (activeRef.current && snapshot.trail.length !== routeCount.current) {
@@ -174,13 +179,28 @@ function useSessionModel() {
     const captured = turnsRef.current;
     const capturedThoughts = thoughtsRef.current;
     const duration = elapsedRef.current;
+
+    // The conversation is turned into a memory of the outing here, and then
+    // dropped. The transcript is never written to the Field Log.
+    const summary = summariseSession(captured, turnTimesRef.current);
+    const place = trailRef.current[0];
+
     patchActiveSession((current) => ({
       ...current,
       endedAt: new Date().toISOString(),
       durationMs: duration,
-      themes: deriveThemes(captured),
+      placeLabel: place?.area ?? place?.label ?? null,
+      observations: summary.observations,
+      themes: summary.themes,
+      moments: summary.moments,
       thoughts: capturedThoughts.length ? capturedThoughts : current.thoughts,
     }));
+
+    // Discard the transcript and its timings.
+    turnsRef.current = [];
+    turnTimesRef.current = new Map();
+    setTurns([]);
+
     setSession((s) => (s ? { ...s, active: false, paused: false } : s));
     setAnnouncement('Session ended. Your Field Log is ready.');
   }, [patchActiveSession, stopLocation, stopRealtime]);
@@ -191,6 +211,8 @@ function useSessionModel() {
       const startedAt = new Date().toISOString();
       turnsRef.current = [];
       thoughtsRef.current = [];
+      turnTimesRef.current = new Map();
+      trailRef.current = [];
       elapsedRef.current = 0;
       activeRef.current = true;
       routeCount.current = 0;
@@ -217,8 +239,11 @@ function useSessionModel() {
           startedAt,
           endedAt: null,
           durationMs: 0,
-          thoughts: [],
+          placeLabel: null,
+          observations: [],
           themes: [],
+          moments: [],
+          thoughts: [],
           route: [],
           voiceTurns: 0,
           simulatedLocation: locationMode === 'demo',
@@ -237,6 +262,13 @@ function useSessionModel() {
           setCloseCode(state.closeCode);
         },
         onTurns: (next) => {
+          // Stamp each turn with its offset into the session the first time it
+          // appears, so Moments can be placed along the walk.
+          for (const turn of next) {
+            if (!turnTimesRef.current.has(turn.id)) {
+              turnTimesRef.current.set(turn.id, elapsedRef.current);
+            }
+          }
           turnsRef.current = next;
           setTurns(next);
           const assistantTurns = next.filter(

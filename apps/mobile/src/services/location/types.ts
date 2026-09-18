@@ -20,6 +20,12 @@ export type PlaceContext = {
   label: string;
   /** Optional short "what is around" line. Must be honest and non-invented. */
   detail?: string;
+  /**
+   * Optional name of the wider area, e.g. "The Embarcadero". Only ever set by a
+   * provider that can honestly know it; the real provider leaves this unset
+   * rather than inventing a neighbourhood name from coordinates.
+   */
+  area?: string;
   /** Coarse activity/state hint, e.g. "walking". */
   activity?: 'still' | 'walking';
   /**

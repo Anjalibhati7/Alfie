@@ -98,8 +98,11 @@ export default function LiveSessionScreen() {
   const trailOffset = trail.length - shownTrail.length;
 
   function finish() {
+    // Capture the id before ending: the user should land on the memory of the
+    // walk they just finished, not on a list.
+    const finishedId = session?.id;
     end();
-    router.replace('/field-log');
+    router.replace(finishedId ? '/field-log/' + finishedId : '/field-log');
   }
 
   return (
