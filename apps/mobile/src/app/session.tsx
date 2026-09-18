@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useStatusAnnouncement } from '../accessibility/useStatusAnnouncement';
 import { Redirect, router } from 'expo-router';
-import { ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { StyleSheet, TextInput, View } from 'react-native';
 import { Screen } from '../components/Screen';
 import { Button, Copy, Eyebrow, Rule, ui } from '../components/ui';
 import { colors, spacing } from '../design/tokens';
@@ -66,251 +66,238 @@ export default function LiveSessionScreen() {
 
   return (
     <Screen>
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={ui.row}>
-          <Eyebrow>{session.mode}</Eyebrow>
-          <Copy
-            kind="label"
-            accessibilityLabel={`Session duration ${formatTime(session.elapsed)}`}
-          >
-            {formatTime(session.elapsed)}
-          </Copy>
-        </View>
-        <Rule />
-
-        <Copy kind="label" style={ui.secondary}>
-          {status === 'connected'
-            ? 'Live voice · Microphone on'
-            : status === 'connecting'
-              ? 'Live voice · Connecting'
-              : 'Live voice · Not connected'}
-          {locationLabel ? ` · ${locationLabel}` : ''}
+      <View style={ui.row}>
+        <Eyebrow>{session.mode}</Eyebrow>
+        <Copy
+          kind="label"
+          accessibilityLabel={`Session duration ${formatTime(session.elapsed)}`}
+        >
+          {formatTime(session.elapsed)}
         </Copy>
+      </View>
+      <Rule />
 
-        {error !== null && (
-          <View style={styles.error} accessibilityLiveRegion="assertive">
-            <Copy kind="heading" accessibilityRole="header">
-              Voice connection problem
-            </Copy>
-            <Copy kind="label">{error}</Copy>
-            <Button label="Retry connection" primary onPress={retry} />
-          </View>
-        )}
+      <Copy kind="label" style={ui.secondary}>
+        {status === 'connected'
+          ? 'Live voice · Microphone on'
+          : status === 'connecting'
+            ? 'Live voice · Connecting'
+            : 'Live voice · Not connected'}
+        {locationLabel ? ` · ${locationLabel}` : ''}
+      </Copy>
 
-        <View style={styles.space}>
-          <Eyebrow>{session.paused ? 'Session paused' : 'Voice state'}</Eyebrow>
-          <Copy
-            kind="title"
-            accessibilityRole="header"
-            accessibilityLiveRegion="polite"
-            accessibilityLabel={`Voice state: ${stateWord}`}
-          >
-            {stateWord}
+      {error !== null && (
+        <View style={styles.error} accessibilityLiveRegion="assertive">
+          <Copy kind="heading" accessibilityRole="header">
+            Voice connection problem
           </Copy>
-          <Copy style={ui.secondary}>{stateDetail}</Copy>
-          {voice === 'Speaking' &&
-            !session.paused &&
-            status === 'connected' && (
-              <Button label="Interrupt and speak" onPress={interrupt} />
-            )}
+          <Copy kind="label">{error}</Copy>
+          <Button label="Retry connection" primary onPress={retry} />
         </View>
+      )}
 
-        <Rule />
+      <View style={styles.space}>
+        <Eyebrow>{session.paused ? 'Session paused' : 'Voice state'}</Eyebrow>
+        <Copy
+          kind="title"
+          accessibilityRole="header"
+          accessibilityLiveRegion="polite"
+          accessibilityLabel={`Voice state: ${stateWord}`}
+        >
+          {stateWord}
+        </Copy>
+        <Copy style={ui.secondary}>{stateDetail}</Copy>
+        {voice === 'Speaking' && !session.paused && status === 'connected' && (
+          <Button label="Interrupt and speak" onPress={interrupt} />
+        )}
+      </View>
 
-        <View style={ui.section}>
-          <Eyebrow>Where you are</Eyebrow>
-          <Copy kind="heading">
-            {place ? place.label : 'Location not in use'}
-          </Copy>
-          <Copy kind="label" style={ui.secondary}>
-            {place?.simulated
-              ? 'Simulated demo route. You are indoors and walking a scripted path.'
-              : place
-                ? 'Approximate position from this device.'
-                : 'Alfie works without location. Conversation still uses the microphone.'}
-          </Copy>
-          <Copy kind="label" style={ui.secondary}>
-            {trail.length > 0
-              ? `${trail.length} place${trail.length === 1 ? '' : 's'} visited this session`
-              : 'No places recorded yet'}
-          </Copy>
-          {trail.length > 0 && (
-            <View
-              style={styles.trail}
-              accessibilityRole="list"
-              accessibilityLabel="Places visited this session"
-            >
-              {trail.map((point, index) => (
-                <Copy key={`${point.id}-${index}`} kind="label">
-                  {String(index + 1).padStart(2, '0')} · {point.label}
-                </Copy>
-              ))}
-            </View>
-          )}
-          <View style={ui.row}>
-            {(['demo', 'real'] as LocationMode[]).map((mode) => (
-              <Button
-                key={mode}
-                label={mode === 'demo' ? 'Demo route' : 'This device'}
-                selected={locationMode === mode}
-                onPress={() => changeLocationMode(mode)}
-                hint={
-                  mode === 'demo'
-                    ? 'Uses a simulated walk so location can be demonstrated indoors.'
-                    : 'Uses this device’s approximate foreground location.'
-                }
-              />
+      <Rule />
+
+      <View style={ui.section}>
+        <Eyebrow>Where you are</Eyebrow>
+        <Copy kind="heading">
+          {place ? place.label : 'Location not in use'}
+        </Copy>
+        <Copy kind="label" style={ui.secondary}>
+          {place?.simulated
+            ? 'Simulated demo route. You are indoors and walking a scripted path.'
+            : place
+              ? 'Approximate position from this device.'
+              : 'Alfie works without location. Conversation still uses the microphone.'}
+        </Copy>
+        <Copy kind="label" style={ui.secondary}>
+          {trail.length > 0
+            ? `${trail.length} place${trail.length === 1 ? '' : 's'} visited this session`
+            : 'No places recorded yet'}
+        </Copy>
+        {trail.length > 0 && (
+          <View
+            style={styles.trail}
+            accessibilityRole="list"
+            accessibilityLabel="Places visited this session"
+          >
+            {trail.map((point, index) => (
+              <Copy key={`${point.id}-${index}`} kind="label">
+                {String(index + 1).padStart(2, '0')} · {point.label}
+              </Copy>
             ))}
           </View>
-        </View>
-
-        <Rule />
-
-        <View style={ui.section}>
-          <Eyebrow>Conversation</Eyebrow>
-          {recent.length === 0 ? (
-            <Copy style={ui.secondary}>
-              Nothing said yet. Start with anything you notice.
-            </Copy>
-          ) : (
-            recent.map((turn) => (
-              <View key={turn.id} style={styles.turn}>
-                <Copy kind="label" style={ui.secondary}>
-                  {turn.role === 'user' ? 'You' : 'Alfie'}
-                  {turn.streaming ? ' · speaking' : ''}
-                </Copy>
-                <Copy>{turn.text}</Copy>
-              </View>
-            ))
-          )}
-          <Copy kind="label" style={ui.secondary}>
-            The spoken transcript is shown only for this session and is not
-            saved or uploaded.
-          </Copy>
-        </View>
-
-        <Rule />
-
-        <View style={ui.section}>
-          <Button
-            label="Save a thought or discovery"
-            expanded={note}
-            onPress={() => {
-              setNote(!note);
-              setSaved('');
-            }}
-          />
-          {note && (
-            <View style={ui.section}>
-              <Copy kind="label">
-                Your note ·{' '}
-                {persistent
-                  ? 'Saved on this device only.'
-                  : 'Kept in memory for this run only; this device cannot store it.'}
-              </Copy>
-              <TextInput
-                accessibilityLabel="Thought or discovery"
-                placeholder="What would you like to keep?"
-                placeholderTextColor={colors.yale}
-                multiline
-                maxLength={2000}
-                style={ui.input}
-                value={draft}
-                onChangeText={setDraft}
-              />
-              <Button
-                label="Save to Field Log"
-                primary
-                disabled={!draft.trim()}
-                onPress={() => {
-                  if (save()) {
-                    setSaved('Saved to your Field Log.');
-                    setAnnouncement('');
-                    setNote(false);
-                  }
-                }}
-              />
-              <Button
-                label="Close editor, keep draft"
-                onPress={() => setNote(false)}
-              />
-            </View>
-          )}
-          {!!saved && (
-            <Copy kind="label" accessibilityLiveRegion="polite">
-              {saved}
-            </Copy>
-          )}
-        </View>
-
-        <Rule />
-
+        )}
         <View style={ui.row}>
-          <Button
-            label={session.paused ? 'Resume session' : 'Pause session'}
-            primary
-            onPress={pause}
-            hint={
-              session.paused
-                ? 'Reopens the microphone.'
-                : 'Closes the microphone and stops the voice until you resume.'
-            }
-          />
-          <Button label="End session" onPress={() => setEnding(true)} />
-        </View>
-        {ending && (
-          <View style={styles.confirm}>
-            <Copy accessibilityRole="header" kind="heading">
-              Finish for now?
-            </Copy>
-            <Copy kind="label">
-              {draft.trim()
-                ? 'You have an unsaved thought. Save it before ending, or explicitly discard it.'
-                : 'Ending stops the microphone and closes the voice connection straight away.'}
-            </Copy>
-            {draft.trim() ? (
-              <>
-                <Button
-                  label="Save thought and finish"
-                  primary
-                  onPress={() => {
-                    save();
-                    finish();
-                  }}
-                />
-                <Button
-                  label="Discard draft and finish"
-                  onPress={() => {
-                    setDraft('');
-                    finish();
-                  }}
-                />
-              </>
-            ) : (
-              <Button
-                label="Finish and view Field Log"
-                primary
-                onPress={finish}
-              />
-            )}
+          {(['demo', 'real'] as LocationMode[]).map((mode) => (
             <Button
-              label="Keep session open"
-              onPress={() => setEnding(false)}
+              key={mode}
+              label={mode === 'demo' ? 'Demo route' : 'This device'}
+              selected={locationMode === mode}
+              onPress={() => changeLocationMode(mode)}
+              hint={
+                mode === 'demo'
+                  ? 'Uses a simulated walk so location can be demonstrated indoors.'
+                  : 'Uses this device’s approximate foreground location.'
+              }
+            />
+          ))}
+        </View>
+      </View>
+
+      <Rule />
+
+      <View style={ui.section}>
+        <Eyebrow>Conversation</Eyebrow>
+        {recent.length === 0 ? (
+          <Copy style={ui.secondary}>
+            Nothing said yet. Start with anything you notice.
+          </Copy>
+        ) : (
+          recent.map((turn) => (
+            <View key={turn.id} style={styles.turn}>
+              <Copy kind="label" style={ui.secondary}>
+                {turn.role === 'user' ? 'You' : 'Alfie'}
+                {turn.streaming ? ' · speaking' : ''}
+              </Copy>
+              <Copy>{turn.text}</Copy>
+            </View>
+          ))
+        )}
+        <Copy kind="label" style={ui.secondary}>
+          The spoken transcript is shown only for this session and is not saved
+          or uploaded.
+        </Copy>
+      </View>
+
+      <Rule />
+
+      <View style={ui.section}>
+        <Button
+          label="Save a thought or discovery"
+          expanded={note}
+          onPress={() => {
+            setNote(!note);
+            setSaved('');
+          }}
+        />
+        {note && (
+          <View style={ui.section}>
+            <Copy kind="label">
+              Your note ·{' '}
+              {persistent
+                ? 'Saved on this device only.'
+                : 'Kept in memory for this run only; this device cannot store it.'}
+            </Copy>
+            <TextInput
+              accessibilityLabel="Thought or discovery"
+              placeholder="What would you like to keep?"
+              placeholderTextColor={colors.yale}
+              multiline
+              maxLength={2000}
+              style={ui.input}
+              value={draft}
+              onChangeText={setDraft}
+            />
+            <Button
+              label="Save to Field Log"
+              primary
+              disabled={!draft.trim()}
+              onPress={() => {
+                if (save()) {
+                  setSaved('Saved to your Field Log.');
+                  setAnnouncement('');
+                  setNote(false);
+                }
+              }}
+            />
+            <Button
+              label="Close editor, keep draft"
+              onPress={() => setNote(false)}
             />
           </View>
         )}
-      </ScrollView>
+        {!!saved && (
+          <Copy kind="label" accessibilityLiveRegion="polite">
+            {saved}
+          </Copy>
+        )}
+      </View>
+
+      <Rule />
+
+      <View style={ui.row}>
+        <Button
+          label={session.paused ? 'Resume session' : 'Pause session'}
+          primary
+          onPress={pause}
+          hint={
+            session.paused
+              ? 'Reopens the microphone.'
+              : 'Closes the microphone and stops the voice until you resume.'
+          }
+        />
+        <Button label="End session" onPress={() => setEnding(true)} />
+      </View>
+      {ending && (
+        <View style={styles.confirm}>
+          <Copy accessibilityRole="header" kind="heading">
+            Finish for now?
+          </Copy>
+          <Copy kind="label">
+            {draft.trim()
+              ? 'You have an unsaved thought. Save it before ending, or explicitly discard it.'
+              : 'Ending stops the microphone and closes the voice connection straight away.'}
+          </Copy>
+          {draft.trim() ? (
+            <>
+              <Button
+                label="Save thought and finish"
+                primary
+                onPress={() => {
+                  save();
+                  finish();
+                }}
+              />
+              <Button
+                label="Discard draft and finish"
+                onPress={() => {
+                  setDraft('');
+                  finish();
+                }}
+              />
+            </>
+          ) : (
+            <Button
+              label="Finish and view Field Log"
+              primary
+              onPress={finish}
+            />
+          )}
+          <Button label="Keep session open" onPress={() => setEnding(false)} />
+        </View>
+      )}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: { flex: 1 },
-  scrollContent: { paddingBottom: spacing.xxxl },
   space: { paddingVertical: spacing.xxl, gap: spacing.lg },
   error: {
     marginTop: spacing.xl,
