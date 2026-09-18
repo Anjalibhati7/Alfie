@@ -26,6 +26,20 @@ if (!config.bosonApiKey) {
 const url = new URL(config.bosonRealtimeUrl);
 url.searchParams.set('model', config.bosonModel);
 
+// Identity of the credential and endpoint under test. The fingerprint is a
+// non-reversible SHA-256 prefix, so it can be compared against the operator's
+// own key without the value being printed.
+process.stdout.write(
+  [
+    `endpoint:    ${url.origin}${url.pathname}?model=${config.bosonModel}`,
+    `key source:  ${config.keySource}`,
+    `key length:  ${config.bosonKeyLength}`,
+    `key print:   ${config.bosonKeyFingerprint ?? '(none)'}`,
+    `key prefix:  ${config.bosonApiKey?.startsWith('bai-') ? 'bai- ok' : 'NOT a bai- key'}`,
+    '',
+  ].join('\n'),
+);
+
 const socket = new WebSocket(url, {
   headers: { Authorization: `Bearer ${config.bosonApiKey}` },
 });

@@ -30,21 +30,23 @@ const server = createServer((request, response) => {
     // `ready` previously meant "a BOSON_API_KEY value exists", which is not the
     // same as "the key works". Boson completes the WebSocket handshake and only
     // then closes with code 3000 for an invalid key, so presence proves nothing.
-    // These fields describe what can actually be checked without opening a
-    // session, and say so plainly rather than implying readiness.
     const key = config.bosonApiKey;
     const looksLikeBosonKey =
       key !== undefined && key.startsWith('bai-') && key.length >= 20;
     json(response, 200, {
       service: 'alfie-agent',
+      buildId: BUILD_ID,
       realtime: {
         provider: 'boson-higgs-realtime',
         model: config.bosonModel,
         endpoint: config.bosonRealtimeUrl,
         credentialConfigured: key !== undefined,
         credentialLooksValid: looksLikeBosonKey,
-        credentialLength: key?.length ?? 0,
-        // Only a live session can prove the key is accepted. Use the probe.
+        credentialLength: config.bosonKeyLength,
+        // Non-reversible. Compare it with `shasum` on your own key to confirm the
+        // server is using the key you think it is, without exposing it.
+        credentialFingerprint: config.bosonKeyFingerprint,
+        credentialSource: config.keySource,
         credentialVerified: false,
         ready: looksLikeBosonKey,
         note: looksLikeBosonKey
@@ -68,6 +70,17 @@ const realtimeServer = new WebSocketServer({ noServer: true });
  * setting LOG_LEVEL=off.
  */
 const loggingEnabled = (process.env.LOG_LEVEL ?? 'info') !== 'off';
+
+/**
+ * Identifies the running build. Printed at startup and exposed on /v1/status so
+ * a stale process can be told apart from a stale checkout — the two look
+ * identical when a fix appears not to have taken effect.
+ */
+const BUILD_ID =
+  process.env.BUILD_ID ??
+  `${process.env.npm_package_version ?? '0.1.0'}+${new Date(
+    Number(process.env.BUILD_TIME ?? Date.now()),
+  ).toISOString()}`;
 
 function logLine(line: Record<string, unknown>): void {
   if (!loggingEnabled) return;
@@ -156,6 +169,27 @@ realtimeServer.on(
 );
 
 server.listen(config.port, '0.0.0.0');
+
+/**
+ * Startup diagnostic. The credential fingerprint is a non-reversible SHA-256
+ * prefix: it lets an operator confirm which key the process is actually holding,
+ * and compare it against their own, without the value ever being printed.
+ */
+logLine({
+  event: 'server.start',
+  buildId: BUILD_ID,
+  port: config.port,
+  model: config.bosonModel,
+  endpoint: config.bosonRealtimeUrl,
+  credentialConfigured: config.bosonApiKey !== undefined,
+  credentialLength: config.bosonKeyLength,
+  credentialFingerprint: config.bosonKeyFingerprint,
+  credentialSource: config.keySource,
+  hint:
+    config.bosonApiKey === undefined
+      ? 'No BOSON_API_KEY found in the process environment or any .env file. Every voice session will fail with close code 3000 until one is set.'
+      : 'If a session fails with close code 3000, this fingerprint identifies which key was sent. Compare it with: printf %s "<your-key>" | shasum -a 256 | cut -c1-8',
+});
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, () => {

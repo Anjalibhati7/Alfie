@@ -186,9 +186,14 @@ export class RealtimeSession {
         typeof event.audio === 'string'
           ? Math.floor((event.audio.length * 3) / 4)
           : 0;
-      // Log the first frames and then occasionally: enough to prove the audio
-      // path is live without emitting a line per ~100 ms chunk.
-      if (this.state.appendChunks === 1 || this.state.appendChunks % 50 === 0) {
+      // The first frame is logged on its own: it is the proof that microphone
+      // audio is arriving from the browser at all.
+      if (this.state.appendChunks === 1) {
+        this.deps.log({
+          event: 'client.audio.first_chunk',
+          approxBytes: bytes,
+        });
+      } else if (this.state.appendChunks % 50 === 0) {
         this.deps.log({
           event: 'client.audio.append',
           chunkIndex: this.state.appendChunks,
@@ -296,8 +301,11 @@ export class RealtimeSession {
       event: 'upstream.open',
       endpoint: `${new URL(this.deps.config.bosonRealtimeUrl).origin}${new URL(this.deps.config.bosonRealtimeUrl).pathname}`,
       model: this.deps.config.bosonModel,
-      // Presence only. The value is never logged.
+      // Presence, length, and a non-reversible fingerprint. Never the value.
       credentialPresent: this.deps.config.bosonApiKey !== undefined,
+      credentialLength: this.deps.config.bosonKeyLength,
+      credentialFingerprint: this.deps.config.bosonKeyFingerprint,
+      credentialSource: this.deps.config.keySource,
     });
     this.sendSessionUpdate({
       model: this.deps.config.bosonModel,
@@ -431,10 +439,10 @@ export class RealtimeSession {
       case 'response.output_audio.delta': {
         this.state.audioChunks += 1;
         this.state.outputDeltas += 1;
-        if (
-          this.state.outputDeltas === 1 ||
-          this.state.outputDeltas % 100 === 0
-        ) {
+        // The first delta is the proof that the provider is speaking back.
+        if (this.state.outputDeltas === 1) {
+          this.deps.log({ event: 'upstream.audio.first_delta' });
+        } else if (this.state.outputDeltas % 100 === 0) {
           this.deps.log({
             event: 'upstream.audio.delta',
             deltaIndex: this.state.outputDeltas,
