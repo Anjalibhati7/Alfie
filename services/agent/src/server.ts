@@ -49,7 +49,11 @@ const realtimeServer = new WebSocketServer({ noServer: true });
 
 function originAllowed(origin: string | undefined): boolean {
   if (config.allowedOrigins.length === 0) return true;
-  if (typeof origin !== 'string') return false;
+  // Native iOS/Android WebSocket clients do not send an Origin header, so an
+  // absent Origin must stay allowed or the deployed service would reject the
+  // mobile app while accepting browsers. The allowlist constrains browsers,
+  // which is where Origin is a meaningful signal.
+  if (typeof origin !== 'string') return true;
   return config.allowedOrigins.includes(origin);
 }
 

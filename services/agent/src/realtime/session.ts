@@ -18,11 +18,7 @@ import {
   type LocationContext,
 } from '../location/context.js';
 import { parseEvent, type ServerEvent } from './protocol.js';
-import {
-  buildInstructions,
-  buildLocationNote,
-  type Mode,
-} from './prompt.js';
+import { buildInstructions, buildLocationNote, type Mode } from './prompt.js';
 
 export type SessionDeps = {
   config: Config;
@@ -45,12 +41,23 @@ type SessionState = {
   turns: number;
   audioChunks: number;
   closed: boolean;
+  /**
+   * True once upstream has acknowledged the session configuration. A successful
+   * WebSocket handshake is NOT enough: the provider accepts the socket and then
+   * rejects the session (for example on an invalid key or an account without
+   * credit), so "ready" is only reported after the provider confirms.
+   */
+  established: boolean;
 };
+
+/** How long to wait for the provider to acknowledge a session. */
+const ESTABLISH_TIMEOUT_MS = 10_000;
 
 export class RealtimeSession {
   private readonly upstream: WebSocket;
   private readonly state: SessionState;
   private closeTimer: NodeJS.Timeout | null = null;
+  private establishTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly deps: SessionDeps,
@@ -63,6 +70,7 @@ export class RealtimeSession {
       turns: 0,
       audioChunks: 0,
       closed: false,
+      established: false,
     };
 
     const url = new URL(deps.config.bosonRealtimeUrl);
@@ -87,10 +95,20 @@ export class RealtimeSession {
           : `The voice service refused the connection (HTTP ${response.statusCode}).`,
       );
     });
-    this.upstream.on('close', (code) => {
-      this.close(
-        'upstream-closed',
-        `voice service closed the session (${code})`,
+    this.upstream.on('close', (code, reason) => {
+      if (this.state.established) {
+        this.close(
+          'upstream-closed',
+          `voice service closed the session (${code})`,
+        );
+        return;
+      }
+      // Closed before the provider ever confirmed the session. That is a
+      // setup problem the operator can act on, not a transient drop.
+      const detail = reason?.length ? ` (${reason.toString()})` : '';
+      this.fail(
+        'upstream-rejected',
+        `The voice service refused this session (close code ${code}${detail}). Check that BOSON_API_KEY is valid and that the Boson account has available credit.`,
       );
     });
 
@@ -126,6 +144,7 @@ export class RealtimeSession {
     if (this.state.closed) return;
     this.state.closed = true;
     if (this.closeTimer) clearTimeout(this.closeTimer);
+    if (this.establishTimer) clearTimeout(this.establishTimer);
     this.deps.send({
       type: 'alfie.closed',
       reason,
@@ -141,6 +160,26 @@ export class RealtimeSession {
       reason,
       turns: this.state.turns,
       audioChunks: this.state.audioChunks,
+    });
+  }
+
+  /**
+   * Called when the provider acknowledges the session. Only now can the client
+   * be told the session is live: the WebSocket handshake alone does not mean the
+   * credential, model, and account are accepted.
+   */
+  private establish(): void {
+    if (this.state.established || this.state.closed) return;
+    this.state.established = true;
+    if (this.establishTimer) {
+      clearTimeout(this.establishTimer);
+      this.establishTimer = null;
+    }
+    this.deps.send({
+      type: 'alfie.ready',
+      mode: this.state.mode,
+      model: this.deps.config.bosonModel,
+      hasLocation: this.state.location !== null,
     });
   }
 
@@ -164,12 +203,15 @@ export class RealtimeSession {
         output_modalities: ['audio'],
       },
     });
-    this.deps.send({
-      type: 'alfie.ready',
-      mode: this.state.mode,
-      model: this.deps.config.bosonModel,
-      hasLocation: this.state.location !== null,
-    });
+    // The provider sends nothing until the first session.update, so "ready" is
+    // held back until that is acknowledged rather than assumed.
+    this.establishTimer = setTimeout(() => {
+      this.fail(
+        'upstream-timeout',
+        'The voice service did not confirm the session in time. Check the server credential and network, then retry.',
+      );
+    }, ESTABLISH_TIMEOUT_MS);
+    this.establishTimer.unref?.();
   }
 
   /**
@@ -222,6 +264,14 @@ export class RealtimeSession {
     const text = typeof data === 'string' ? data : data.toString();
     const event = parseEvent(text);
     if (!event) return;
+
+    // `session.created` acknowledges the first session.update, and
+    // `session.updated` acknowledges a later one. Either means the provider has
+    // accepted the credential and configuration.
+    if (event.type === 'session.created' || event.type === 'session.updated') {
+      this.establish();
+    }
+
     this.track(event);
     this.deps.send(event);
   }

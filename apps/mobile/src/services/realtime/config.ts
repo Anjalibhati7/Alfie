@@ -13,15 +13,32 @@ function trimTrailingSlash(value: string): string {
 }
 
 /**
+ * Normalises a configured agent URL. A bare host such as
+ * `alfie.example.instacloud.app` is assumed to be HTTPS, because a public
+ * deployment is the normal production case and a schemeless value would
+ * otherwise resolve as a relative path and fail confusingly.
+ */
+function normaliseConfigured(value: string): string {
+  const trimmed = trimTrailingSlash(value);
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
+/**
  * Base HTTP URL of the Alfie agent service.
  *
- * - Web: reuse the page's host so `npm run web` works with no configuration.
- * - Native: set `EXPO_PUBLIC_AGENT_URL` to the machine running the agent, e.g.
- *   `EXPO_PUBLIC_AGENT_URL=http://192.168.1.20:8080 npm run mobile`.
+ * - `EXPO_PUBLIC_AGENT_URL` wins when set. Point it at the deployed service, e.g.
+ *   `EXPO_PUBLIC_AGENT_URL=https://<your-instacloud-host>` for a device build, or
+ *   at a LAN address for local development: `http://192.168.1.20:8080`.
+ * - Web falls back to the page's own host on port 8080, so `npm run web` works
+ *   against a locally running agent with no configuration.
+ * - Native without the variable falls back to `localhost`, which only works in a
+ *   simulator sharing the host's network. The connection error shown in the
+ *   session explains that the agent must be reachable and offers a retry.
  */
 export function resolveAgentHttpUrl(): string {
   const configured = process.env.EXPO_PUBLIC_AGENT_URL?.trim();
-  if (configured) return trimTrailingSlash(configured);
+  if (configured) return normaliseConfigured(configured);
 
   const location = globalThis.location;
   if (location?.hostname) {

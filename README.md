@@ -72,22 +72,51 @@ For an indoor hackathon demo, leave location on **Demo route**: it walks seven n
 
 ## Deployment
 
-The InstaCloud CLI is **not available in this environment**, so nothing was deployed. The service is prepared for the existing `alfie` project (`.insta/project.json`, project `4e5c15b5-3a82-4718-b004-4340a219b719`).
+**Nothing has been deployed.** The InstaCloud CLI _is_ reachable from this environment and is correctly linked to the existing `alfie` project, but its agent session has expired, and refreshing it requires human authorization. No other project was created.
 
-Locally, from the repository root:
+Verified from here:
 
 ```sh
-# 1. Set the secret on the InstaCloud project (never commit it).
-insta secrets set BOSON_API_KEY=bai-xxxxxxxx --project 4e5c15b5-3a82-4718-b004-4340a219b719
-
-# 2. Deploy the existing agent service.
-insta deploy --agent --project 4e5c15b5-3a82-4718-b004-4340a219b719
-
-# 3. Confirm readiness (returns booleans, never the key).
-curl https://<your-instacloud-host>/v1/status
+npx -y insta@latest --agent status --json     # OK — linked to 4e5c15b5-…, branch higgs-realtime
+npx -y insta@latest build services/agent      # OK — "verdict: deployable", 4/4 checks
+npx -y insta@latest --agent deploy …          # FAILS — "agent session missing, expired, or for another project/environment"
 ```
 
-Verify the deploy command against your installed CLI version — it could not be executed or validated here. Point the app at the deployed service with `EXPO_PUBLIC_AGENT_URL=https://<your-instacloud-host> npm run mobile`, and set `ALLOWED_ORIGINS` to the exact origin the web build is served from.
+### Deploy from your Mac
+
+Run these from the repository root, on the machine where the InstaCloud agent session is valid. `services/agent` is deploy-ready: `insta build` reports `verdict: deployable`, port `8080` from `EXPOSE`, and a 0.1 MB build context.
+
+```sh
+# 1. Refresh the agent session (expired sessions need this; it is interactive).
+npx -y insta@latest --agent setup
+
+# 2. Confirm you are on the right project before deploying.
+npx -y insta@latest --agent status --json
+#    expect projectId 4e5c15b5-3a82-4718-b004-4340a219b719, branch higgs-realtime
+
+# 3. Deploy. --websocket is REQUIRED: /realtime is a WebSocket route on both
+#    the mobile and web paths.
+npx -y insta@latest --agent deploy services/agent --port 8080 --websocket
+
+# 4. Verify readiness. Returns booleans and the model name, never the key.
+curl -sS https://<your-instacloud-host>/v1/status
+#    expect: {"realtime":{"credentialConfigured":true,"ready":true,...}}
+
+# 5. Verify the WebSocket route through the public deployment.
+npx -y wscat -c "wss://<your-instacloud-host>/realtime?mode=Discover"
+#    expect first frame: {"type":"alfie.ready",...}
+#    A close with "Invalid API key" means the project secret is missing or wrong.
+```
+
+`BOSON_API_KEY` must already exist as a project secret — do not add it here, and never paste it into a command line or a file. Its value was not read, printed, or copied at any point. Set `ALLOWED_ORIGINS` to the exact origin the web build is served from; native clients send no `Origin` header and stay allowed.
+
+Finally, point the app at the deployment:
+
+```sh
+EXPO_PUBLIC_AGENT_URL=https://<your-instacloud-host> npx expo run:ios
+```
+
+A schemeless value (`EXPO_PUBLIC_AGENT_URL=host.instacloud.app`) is accepted and assumed to be HTTPS.
 
 ## Privacy posture
 

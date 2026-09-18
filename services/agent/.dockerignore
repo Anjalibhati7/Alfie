@@ -1,0 +1,27 @@
+# Keep the deploy build context to source only.
+
+# Dependencies and build output are installed inside the image.
+node_modules
+dist
+build
+coverage
+*.tsbuildinfo
+
+# Secrets and local configuration. .env.example is value-free and only documents
+# the required variable names, so it may ship.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+
+# Not needed at runtime.
+README.md
+migrations
+**/*.md
+!src/**/*.md
+
+# Local machine files.
+.DS_Store
+*.log

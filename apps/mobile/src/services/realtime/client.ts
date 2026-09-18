@@ -279,8 +279,10 @@ export function createRealtimeSession(
     socket = socket_;
 
     socket_.onopen = () => {
-      emitState({ status: 'connected', error: null });
-      handlers.onAnnouncement('Connected. Alfie is listening.');
+      // The socket to the Alfie agent is open, but the upstream Higgs session is
+      // not confirmed yet. Reporting "connected" here would be a claim we cannot
+      // back up; the agent sends `alfie.ready` once the provider acknowledges.
+      emitState({ status: 'connecting', error: null });
     };
 
     socket_.onmessage = (message) => {
