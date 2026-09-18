@@ -1,21 +1,123 @@
 import { createServer } from 'node:http';
+import { WebSocketServer, type WebSocket } from 'ws';
+import { loadConfig } from './config.js';
+import { RealtimeSession } from './realtime/session.js';
+import { parseMode } from './realtime/prompt.js';
 
-const port = Number(process.env.PORT ?? 8080);
-if (!Number.isInteger(port) || port < 1 || port > 65535) {
-  throw new Error('PORT must be an integer between 1 and 65535');
-}
-const server = createServer((request, response) => {
+const config = loadConfig();
+
+function json(
+  response: import('node:http').ServerResponse,
+  status: number,
+  body: unknown,
+): void {
   response.setHeader('Content-Type', 'application/json');
   response.setHeader('Cache-Control', 'no-store');
-  if (request.method === 'GET' && request.url === '/health') {
-    response.writeHead(200);
-    response.end(JSON.stringify({ status: 'ok', service: 'alfie-agent' }));
+  response.writeHead(status);
+  response.end(JSON.stringify(body));
+}
+
+const server = createServer((request, response) => {
+  const url = new URL(request.url ?? '/', 'http://localhost');
+
+  if (request.method === 'GET' && url.pathname === '/health') {
+    // Liveness only: does not imply the voice provider is reachable.
+    json(response, 200, { status: 'ok', service: 'alfie-agent' });
     return;
   }
-  response.writeHead(404);
-  response.end(JSON.stringify({ error: 'Not found' }));
+
+  if (request.method === 'GET' && url.pathname === '/v1/status') {
+    // Readiness for the realtime voice path. Booleans only, never key values.
+    json(response, 200, {
+      service: 'alfie-agent',
+      realtime: {
+        provider: 'boson-higgs-realtime',
+        model: config.bosonModel,
+        endpoint: config.bosonRealtimeUrl,
+        credentialConfigured: config.bosonApiKey !== undefined,
+        ready: config.bosonApiKey !== undefined,
+      },
+      limits: { maxSessionMs: config.maxSessionMs },
+    });
+    return;
+  }
+
+  json(response, 404, { error: 'Not found' });
 });
-server.listen(port, '0.0.0.0');
+
+const realtimeServer = new WebSocketServer({ noServer: true });
+
+function originAllowed(origin: string | undefined): boolean {
+  if (config.allowedOrigins.length === 0) return true;
+  if (typeof origin !== 'string') return false;
+  return config.allowedOrigins.includes(origin);
+}
+
+server.on('upgrade', (request, socket, head) => {
+  const url = new URL(request.url ?? '/', 'http://localhost');
+  if (url.pathname !== '/realtime') {
+    socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+  if (!originAllowed(request.headers.origin)) {
+    socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+  if (!config.bosonApiKey) {
+    socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+  realtimeServer.handleUpgrade(request, socket, head, (client) => {
+    realtimeServer.emit('connection', client, request);
+  });
+});
+
+realtimeServer.on(
+  'connection',
+  (client: WebSocket, request: import('node:http').IncomingMessage) => {
+    const url = new URL(request.url ?? '/', 'http://localhost');
+    const mode = parseMode(url.searchParams.get('mode')) ?? 'Discover';
+
+    const session = new RealtimeSession(
+      {
+        config,
+        send: (event) => {
+          if (client.readyState === client.OPEN)
+            client.send(JSON.stringify(event));
+        },
+        onClose: (summary) => {
+          // Counts only. Never transcripts, audio, or coordinates.
+          process.stdout.write(
+            `${JSON.stringify({
+              level: 'info',
+              event: 'realtime.session.closed',
+              mode,
+              reason: summary.reason,
+              turns: summary.turns,
+              audioChunks: summary.audioChunks,
+            })}\n`,
+          );
+          client.close(1000, summary.reason.slice(0, 100));
+        },
+      },
+      mode,
+    );
+
+    client.on('message', (data) => {
+      session.handleClientMessage(
+        typeof data === 'string' ? data : data.toString(),
+      );
+    });
+    client.on('close', () => session.close('client-closed', 'session ended'));
+    client.on('error', () => session.close('client-error', 'connection error'));
+  },
+);
+
+server.listen(config.port, '0.0.0.0');
+
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, () => {
     server.close((error) => {

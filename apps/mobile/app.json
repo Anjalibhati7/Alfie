@@ -12,7 +12,14 @@
       "output": "single"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Alfie uses the microphone only while you have an active session open, so you can talk with it out loud. Audio is streamed for the conversation and is never saved. You can pause or end the session at any time.",
+        "NSLocationWhenInUseUsageDescription": "Alfie can use your approximate location while a session is open to make its suggestions fit where you are. Location is optional, is never tracked in the background, and is never saved as a history."
+      }
+    },
+    "android": {
+      "permissions": ["RECORD_AUDIO", "ACCESS_COARSE_LOCATION"]
     }
   }
 }

@@ -30,7 +30,7 @@ export default function HomeScreen() {
       </View>
       <View style={styles.preview}>
         <Copy kind="label">
-          Interactive preview · No microphone or location is used.
+          Live voice session · Microphone and optional location are used.
         </Copy>
       </View>
       {session?.active ? (
