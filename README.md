@@ -5,7 +5,7 @@ A privacy-first, location-aware AI voice companion for noticing more, following 
 ## Repository
 
 ```text
-apps/mobile/                React Native + Expo + Router boot app
+apps/mobile/                React Native + Expo + Router mobile app
 services/agent/             Node/TypeScript agent service scaffold
 services/agent/migrations/  Versioned InsForge schema and authorization changes
 docs/                      Decisions and implementation/release guidance
@@ -17,7 +17,7 @@ ARCHITECTURE.md            Planned system responsibilities and trust boundaries
 
 ## Status
 
-Foundation milestone: a minimal mobile boot screen and backend health endpoint are runnable. Product screens, provider integrations, and deployment await approval.
+Mobile preview: home, live-session shell, and session-end/Field Log screens implement Discover and Reimagine with local mock states. Backend health endpoint remains available. Realtime/provider integrations and deployment await approval.
 
 Read [AGENTS.md](AGENTS.md), [PRODUCT.md](PRODUCT.md), [PRIVACY.md](PRIVACY.md), and [ARCHITECTURE.md](ARCHITECTURE.md) before making changes. Cloud setup status is recorded in [docs/setup.md](docs/setup.md).
 
@@ -42,4 +42,4 @@ npm run agent
 
 Quality checks: `npm run lint`, `npm run typecheck`, `npm run format:check`, and `npm run build:agent`.
 
-Mobile source is under `apps/mobile/src`; backend source is under `services/agent/src`. See their READMEs for details and [docs/design.md](docs/design.md) for visual tokens and guidance. No real user data or secrets are needed for the boot app.
+Mobile source is under `apps/mobile/src`; backend source is under `services/agent/src`. See their READMEs for details and [docs/design.md](docs/design.md) for visual tokens and guidance. No real user data or secrets are needed for the mobile preview.

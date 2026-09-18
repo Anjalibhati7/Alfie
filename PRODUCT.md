@@ -1,28 +1,23 @@
 # Product intent
 
-Alfie helps people get out of autopilot and connect with the world around them through optional, contextual voice conversation.
+Alfie is a privacy-first, location-aware AI voice companion that helps people step out of autopilot and engage more deeply with the world around them. It is not a fitness app, tourism app, walking tracker, or generic prompt generator.
 
-## Core modes
+## Discover
 
-Notice, Curious, Explore, Create, and Unwind. Voice leads during active exploration; the screen supports real-world attention. Alfie should know when to prompt, follow a tangent, stay quiet, recover from interruption, or gently redirect.
+Help the user notice and understand their surroundings. Begin with contextual observational prompts when useful; ask short follow-ups about what catches their attention. When curiosity emerges, stop pushing new prompts and follow that topic naturally. Explain, research, or use location/place context when asked. Prioritize curiosity over task completion, avoid information dumping, and never change subjects while the user is engaged.
 
-Alfie is not a fitness app, tourism app, walking tracker, or generic prompt generator.
+## Reimagine
 
-## Intended experiences (not implemented)
+Help the user interpret, transform, compare, invent, or create from what they encounter. Be more proactive and playful than Discover, using the physical environment as raw material. Challenges can include redesigning something poorly designed, comparing objects, describing under constraints, turning an observation into an idea, imagining alternate uses, sketching, writing, storytelling, or taking a different route when useful. Do not reduce the mode to photography or walking. Build on the user's answers instead of mechanically advancing prompts; avoid repeating recent challenge types.
 
-- Notice interesting details and nearby places with user-permitted location context.
-- Follow curiosity through interruptible, concise voice exchanges.
-- Intentionally save meaningful discoveries to a personal Field Log and useful memories.
-- Revisit, correct, export, or delete what was saved.
+## Shared behavior
 
-## Principles and boundaries
+Voice leads during active exploration; the screen supports attention rather than competing for it. Alfie must be interruptible, follow changes of direction immediately, allow natural pauses, and avoid question-after-question interviewing. User curiosity always outranks Alfie's planned prompt. Location improves the experience but is never mandatory.
 
-Real-world attention, user agency, accessibility, and privacy outrank engagement metrics. Voice is convenient but must not be required. Suggestions should acknowledge uncertainty and respect safety and permission choices.
+## Privacy and control
 
-No always-on surveillance, automatic travel history, manipulative streaks, social feed, or unrequested sharing. Alfie is not an emergency service or a safety-critical navigation system.
+Request permissions just-in-time. No raw audio storage by default, passive location history, or background tracking. Memories must be inspectable, editable, and deletable. No manipulative streaks, social feed, or unrequested sharing. Alfie is not an emergency service or safety-critical navigation system.
 
-## Initial success criteria
+## Current implementation boundary
 
-Users understand capture and saving status, can stop a session immediately, can explore with denied permissions, and can save and remove a discovery without confusion. Core interactions must be usable with screen readers, large text, and reduced motion.
-
-The current milestone provides an Expo boot screen and backend scaffold only. Product screens, flows, schemas, and provider integrations await approval.
+Home offers exactly two modes. The live-session shell has explicitly simulated voice states, timer, optional map placeholder, local note saving, pause/resume, and end controls. Field Log supports reviewing, editing, and deleting in-memory notes and reviewing session duration. Nothing uses microphone, location, AI, Maps, authentication, or backend storage. Notes disappear on reload or app restart; labels must say so. Real conversation behavior is a product specification, not implemented AI.

@@ -8,9 +8,15 @@ These instructions apply to the entire repository and all future human and agent
 - Support real-world attention and agency. Prefer short, timely, optional interactions over engagement loops, streak pressure, or constant prompting.
 - Be honest about uncertainty, place freshness, AI limitations, and connection state. Never invent location facts or imply the assistant is human.
 - Respect physical safety: avoid distracting users while crossing roads or driving; never encourage trespassing or unsafe exploration.
-- Current milestone permits Expo/TypeScript/Router scaffolding, a minimal boot screen, a backend foundation, checks, and the first commit. Do not build product screens, integrate Higgs, provision cloud services, or deploy without further approval.
-- Core modes are Notice, Curious, Explore, Create, and Unwind. Alfie is not a fitness app, tourism app, walking tracker, or generic prompt generator.
+- Current milestone permits home, live-session shell, and session-end/Field Log screens with clearly labeled local mock states. Do not integrate Higgs, Maps, backend data, provision cloud services, or deploy without further approval.
+- Exactly two modes: Discover and Reimagine. Alfie is not a fitness app, tourism app, walking tracker, or generic prompt generator.
 - Voice is primary during active exploration; screens support rather than compete for attention. The companion should prompt thoughtfully, follow tangents, stay quiet, recover from interruption, and gently redirect when appropriate.
+
+## Mode behavior
+
+- Discover helps users notice and understand their surroundings. Offer contextual observational prompts when useful and short follow-ups about what catches their attention. When curiosity emerges, stop pushing new prompts and follow the topic. Explain, research, or use place context when asked; avoid information dumps and subject changes during engagement. Curiosity outranks task sequences.
+- Reimagine helps users interpret, transform, compare, invent, or create from what they encounter. Be more proactive and playful, using the physical environment as raw material: redesign, comparison, constrained description, alternate uses, ideas, sketching, writing, storytelling, or an optional different route. Never reduce it to photography or walking challenges. Build on answers and avoid repeating recent challenge types.
+- Both modes must be interruptible. Follow a user's change of direction immediately, allow natural pauses, and avoid interviewer-like strings of questions. User curiosity always takes priority over planned prompts. Location improves context but must never be mandatory.
 
 ## Visual direction
 

@@ -1,10 +1,11 @@
+import { SessionProvider } from '../state/session';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { semanticColors } from '../design/tokens';
 
 export default function RootLayout() {
   return (
-    <>
+    <SessionProvider>
       <StatusBar style="dark" />
       <Stack
         screenOptions={{
@@ -13,6 +14,6 @@ export default function RootLayout() {
           contentStyle: { backgroundColor: semanticColors.background },
         }}
       />
-    </>
+    </SessionProvider>
   );
 }

@@ -37,3 +37,11 @@ npm audit reports 13 moderate findings in the Expo dependency tree, originating 
 ESLint 9 is deprecated upstream but retained for the Expo lint configuration's current compatibility range. npm also reports unapproved optional/native install scripts (esbuild, fsevents, unrs-resolver); no broad script approval was added. The documented compilation/lint checks succeeded with this environment's installed platform packages.
 
 An initial optional worklets/reanimated peer mismatch was resolved by declaring Expo-compatible versions in the mobile workspace. No provider integrations, product screens, cloud services, or deployments were added. Further implementation awaits approval.
+
+## Two-mode mobile preview milestone
+
+Product guidance now defines only Discover and Reimagine, with shared interruptibility, pauses, user-led curiosity, and optional location. Home, live-session shell, and Field Log are implemented with explicitly labeled local mock states. Notes are in-memory and editable/deletable; no provider calls or permissions were added.
+
+Verification: workspace lint/type checks and iOS/Android/web exports passed. Browser walkthrough verified both modes, simulated voice changes, interruption, pause/resume, optional map expansion, saving a thought, ending a session, editing an entry, and canceling deletion. A 390×844 viewport review verified the quiet session layout and scrollable home layout. Timer stayed fixed while paused. Native screen-reader/device checks remain outstanding; accessibility compliance is not yet certified.
+
+Shared controls have 48-unit minimum targets, semantic roles/states, visible keyboard focus, and text equivalents. Text scales, layouts wrap/scroll, and no animations run. Status announcements use polite live regions on web/Android and the native announcement API on iOS. Actual assistive-technology behavior still needs device verification. Realtime, Maps, backend data, and deployment await approval.

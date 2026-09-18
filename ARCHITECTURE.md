@@ -1,6 +1,6 @@
 # Planned architecture
 
-Status: Expo Router/TypeScript mobile boot screen and a Node/TypeScript backend health endpoint are scaffolded. Product features, provider integrations, schemas, and deployments are not implemented.
+Status: Expo Router/TypeScript home, session, and Field Log preview and a Node/TypeScript backend health endpoint are scaffolded. Local UI interactions are implemented; provider integrations, schemas, and deployments are not. A shared React context holds the current session, elapsed active time, note draft, and temporary Field Log. It makes no storage or network calls.
 
 | Component            | Responsibility                                                                                                                                             |
 | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
