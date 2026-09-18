@@ -24,6 +24,11 @@ export default function LiveSessionScreen() {
     locationLabel,
     locationMode,
     persistent,
+    capturing,
+    level,
+    sentChunks,
+    receivedDeltas,
+    closeCode,
     announcement,
     pause,
     end,
@@ -43,22 +48,48 @@ export default function LiveSessionScreen() {
   if (!session) return <Redirect href="/" />;
   if (!session.active) return <Redirect href="/field-log" />;
 
-  const stateWord = session.paused
-    ? 'Paused'
-    : status === 'connecting'
-      ? 'Connecting'
-      : voice === 'Thinking'
-        ? 'Thinking…'
-        : voice;
-  const stateDetail = session.paused
-    ? 'Microphone off. Resume when you are ready.'
-    : status === 'connecting'
-      ? 'Opening a secure voice connection.'
-      : voice === 'Listening'
-        ? 'Room for your thoughts. Nothing is required from you.'
-        : voice === 'Thinking'
-          ? 'Working out what to say.'
-          : 'Alfie is speaking. Say anything to interrupt.';
+  /**
+   * A single explicit stage so the state of the audio path is never ambiguous:
+   * Connecting → Microphone active → Listening → Thinking → Speaking.
+   */
+  const stage: { label: string; detail: string } = session.paused
+    ? {
+        label: 'Paused',
+        detail: 'Microphone off. Resume when you are ready.',
+      }
+    : status === 'error'
+      ? {
+          label: 'Stopped',
+          detail: error ?? 'The voice session stopped.',
+        }
+      : status === 'connecting'
+        ? {
+            label: 'Connecting',
+            detail: 'Opening a secure voice connection.',
+          }
+        : !capturing
+          ? {
+              label: 'Microphone waiting',
+              detail:
+                'Connected, but the microphone is not delivering audio yet.',
+            }
+          : voice === 'Thinking'
+            ? { label: 'Thinking…', detail: 'Working out what to say.' }
+            : voice === 'Speaking'
+              ? {
+                  label: 'Speaking',
+                  detail: 'Alfie is speaking. Say anything to interrupt.',
+                }
+              : {
+                  label: 'Listening',
+                  detail:
+                    level > 0.02
+                      ? 'Hearing you.'
+                      : 'Microphone live. Say something.',
+                };
+
+  const stateWord = stage.label;
+  const stateDetail = stage.detail;
 
   const recent = turns.slice(-4);
   // A long demo walk accumulates one place every few seconds; the session screen
@@ -86,7 +117,9 @@ export default function LiveSessionScreen() {
 
       <Copy kind="label" style={ui.secondary}>
         {status === 'connected'
-          ? 'Live voice · Microphone on'
+          ? capturing
+            ? 'Live voice · Microphone active'
+            : 'Live voice · Connected, microphone idle'
           : status === 'connecting'
             ? 'Live voice · Connecting'
             : 'Live voice · Not connected'}
@@ -99,9 +132,57 @@ export default function LiveSessionScreen() {
             Voice connection problem
           </Copy>
           <Copy kind="label">{error}</Copy>
+          {closeCode !== null && (
+            <Copy kind="label" style={ui.secondary}>
+              Voice service close code {closeCode}
+              {closeCode === 3000
+                ? ' · the API key was rejected as invalid or expired'
+                : closeCode === 4429
+                  ? ' · billing refused the session'
+                  : closeCode === 1013
+                    ? ' · concurrency limit reached'
+                    : ''}
+            </Copy>
+          )}
           <Button label="Retry connection" primary onPress={retry} />
         </View>
       )}
+
+      {/*
+        Microphone meter. This is the only thing on screen that proves the
+        browser is actually receiving the user's voice: a working socket with a
+        dead microphone looks identical without it.
+      */}
+      <View style={styles.mic} accessibilityLiveRegion="polite">
+        <View style={ui.row}>
+          <Eyebrow>Microphone</Eyebrow>
+          <Copy kind="label" style={ui.secondary}>
+            {capturing
+              ? level > 0.02
+                ? 'Receiving your voice'
+                : 'Live — silence'
+              : 'Not capturing'}
+          </Copy>
+        </View>
+        <View
+          style={styles.meterTrack}
+          accessibilityRole="progressbar"
+          accessibilityLabel="Microphone input level"
+          accessibilityValue={{
+            min: 0,
+            max: 100,
+            now: Math.round(level * 100),
+          }}
+        >
+          <View
+            style={[styles.meterFill, { width: `${Math.round(level * 100)}%` }]}
+          />
+        </View>
+        <Copy kind="label" style={ui.secondary}>
+          {sentChunks} audio frame{sentChunks === 1 ? '' : 's'} sent ·{' '}
+          {receivedDeltas} received
+        </Copy>
+      </View>
 
       <View style={styles.space}>
         <Eyebrow>{session.paused ? 'Session paused' : 'Voice state'}</Eyebrow>
@@ -326,6 +407,14 @@ const styles = StyleSheet.create({
     paddingLeft: spacing.lg,
   },
   turn: { gap: spacing.xs, marginBottom: spacing.lg },
+  mic: { marginTop: spacing.xl, gap: spacing.sm },
+  meterTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.powder,
+    overflow: 'hidden',
+  },
+  meterFill: { height: 6, backgroundColor: colors.yale },
   confirm: {
     marginTop: spacing.xl,
     gap: spacing.lg,

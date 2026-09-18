@@ -96,3 +96,20 @@ export class LinearResampler {
     return input[index] ?? 0;
   }
 }
+
+/**
+ * Loudness of a buffer, 0..1, for the on-screen microphone meter.
+ *
+ * Uses RMS scaled for visibility: normal speech sits around 0.05-0.2 RMS, which
+ * would barely move a raw 0..1 bar, so it is amplified and clamped.
+ */
+export function levelOf(samples: Float32Array): number {
+  if (samples.length === 0) return 0;
+  let sum = 0;
+  for (let i = 0; i < samples.length; i += 1) {
+    const value = samples[i] ?? 0;
+    sum += value * value;
+  }
+  const rms = Math.sqrt(sum / samples.length);
+  return Math.min(1, rms * 4);
+}

@@ -21,6 +21,12 @@ export type MicCaptureHandlers = {
   /** base64 PCM16 LE mono @24000Hz, ready for input_audio_buffer.append. */
   onChunk: (base64Pcm16: string) => void;
   onError: (error: AudioTransportError) => void;
+  /**
+   * Input loudness, 0..1, for the on-screen microphone meter. This is the only
+   * signal that proves the browser is actually receiving the user's voice;
+   * without it a working socket and a dead microphone look identical.
+   */
+  onLevel?: (level: number) => void;
 };
 
 export type MicCapture = {

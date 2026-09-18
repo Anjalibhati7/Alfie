@@ -11,7 +11,12 @@
  */
 
 import { loadNativeAudioApi, type NativeAudioApi } from './nativeAudioApi';
-import { floatToBase64Pcm16, LinearResampler, WIRE_SAMPLE_RATE } from './pcm';
+import {
+  floatToBase64Pcm16,
+  levelOf,
+  LinearResampler,
+  WIRE_SAMPLE_RATE,
+} from './pcm';
 import {
   CAPTURE_UNSUPPORTED_MESSAGE,
   MIC_DENIED_MESSAGE,
@@ -90,7 +95,10 @@ export async function startPlatformCapture(
               WIRE_SAMPLE_RATE,
             );
           }
-          const resampled = resampler.process(buffer.getChannelData(0));
+          const channel = buffer.getChannelData(0);
+          // Drives the on-screen meter that proves the device microphone works.
+          if (handlers.onLevel) handlers.onLevel(levelOf(channel));
+          const resampled = resampler.process(channel);
           if (resampled.length === 0) return;
           handlers.onChunk(floatToBase64Pcm16(resampled));
         } catch {

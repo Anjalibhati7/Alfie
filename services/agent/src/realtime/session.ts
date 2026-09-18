@@ -17,6 +17,7 @@ import {
   parseLocationContext,
   type LocationContext,
 } from '../location/context.js';
+import { explainClose } from './closeCodes.js';
 import { parseEvent, type ServerEvent } from './protocol.js';
 import { buildInstructions, buildLocationNote, type Mode } from './prompt.js';
 
@@ -26,6 +27,11 @@ export type SessionDeps = {
   send: (event: Record<string, unknown>) => void;
   /** Called once when the session ends, for operational counters only. */
   onClose: (summary: SessionSummary) => void;
+  /**
+   * Structured diagnostic log line. Event names, counters, and provider error
+   * text only — never audio, transcripts, coordinates, or credentials.
+   */
+  log: (line: Record<string, unknown>) => void;
 };
 
 export type SessionSummary = {
@@ -48,10 +54,28 @@ type SessionState = {
    * credit), so "ready" is only reported after the provider confirms.
    */
   established: boolean;
+  /**
+   * The most recent provider `error` event, kept verbatim. The close frame alone
+   * is often less informative than the error that preceded it, and this is what
+   * gets surfaced to the user instead of a generic "session closed" message.
+   */
+  lastUpstreamError: Record<string, unknown> | null;
+  /** Client audio frames received, for the audio-path diagnostics. */
+  appendChunks: number;
+  /** Provider audio deltas relayed, for the audio-path diagnostics. */
+  outputDeltas: number;
+  /** Audio held until the provider confirms the session. */
+  pendingAudio: Record<string, unknown>[];
 };
 
 /** How long to wait for the provider to acknowledge a session. */
 const ESTABLISH_TIMEOUT_MS = 10_000;
+
+/**
+ * Roughly 5 seconds of 100 ms frames. Beyond this the client is assumed to be
+ * streaming into a session that will never come up.
+ */
+const MAX_PENDING_AUDIO_CHUNKS = 50;
 
 export class RealtimeSession {
   private readonly upstream: WebSocket;
@@ -71,6 +95,10 @@ export class RealtimeSession {
       audioChunks: 0,
       closed: false,
       established: false,
+      lastUpstreamError: null,
+      appendChunks: 0,
+      outputDeltas: 0,
+      pendingAudio: [],
     };
 
     const url = new URL(deps.config.bosonRealtimeUrl);
@@ -95,21 +123,36 @@ export class RealtimeSession {
           : `The voice service refused the connection (HTTP ${response.statusCode}).`,
       );
     });
-    this.upstream.on('close', (code, reason) => {
-      if (this.state.established) {
-        this.close(
-          'upstream-closed',
-          `voice service closed the session (${code})`,
-        );
-        return;
-      }
-      // Closed before the provider ever confirmed the session. That is a
-      // setup problem the operator can act on, not a transient drop.
-      const detail = reason?.length ? ` (${reason.toString()})` : '';
-      this.fail(
-        'upstream-rejected',
-        `The voice service refused this session (close code ${code}${detail}). Check that BOSON_API_KEY is valid and that the Boson account has available credit.`,
-      );
+    this.upstream.on('close', (code, reasonBuffer) => {
+      const reason = reasonBuffer?.toString() ?? '';
+      this.deps.log({
+        event: 'upstream.close',
+        closeCode: code,
+        closeReason: reason || null,
+        established: this.state.established,
+        appendChunks: this.state.appendChunks,
+        outputDeltas: this.state.outputDeltas,
+      });
+
+      const explained = explainClose(code, reason);
+      // The provider error event, when there is one, is more specific than the
+      // close code. Surface it rather than flattening everything into
+      // "session closed (code)".
+      const upstreamDetail = this.describeLastUpstreamError();
+      const message = upstreamDetail
+        ? `${explained.message} ${upstreamDetail}`
+        : explained.message;
+
+      this.deps.send({
+        type: 'alfie.diagnostic',
+        closeCode: code,
+        closeReason: reason || null,
+        established: this.state.established,
+        appendChunks: this.state.appendChunks,
+        outputDeltas: this.state.outputDeltas,
+        upstreamError: this.state.lastUpstreamError,
+      });
+      this.fail(explained.code, message);
     });
 
     // A demo session should never be able to run indefinitely by accident.
@@ -137,7 +180,58 @@ export class RealtimeSession {
       this.forwardSessionUpdate(event.session);
       return;
     }
+    if (event.type === 'input_audio_buffer.append') {
+      this.state.appendChunks += 1;
+      const bytes =
+        typeof event.audio === 'string'
+          ? Math.floor((event.audio.length * 3) / 4)
+          : 0;
+      // Log the first frames and then occasionally: enough to prove the audio
+      // path is live without emitting a line per ~100 ms chunk.
+      if (this.state.appendChunks === 1 || this.state.appendChunks % 50 === 0) {
+        this.deps.log({
+          event: 'client.audio.append',
+          chunkIndex: this.state.appendChunks,
+          approxBytes: bytes,
+        });
+      }
+      if (!this.state.established) {
+        // The browser starts the microphone as soon as the socket opens, which
+        // can be before the provider confirms the session. Sending audio now
+        // risks an error, but dropping it would swallow the user's first words,
+        // so a short window is held and flushed on confirmation.
+        if (this.state.pendingAudio.length < MAX_PENDING_AUDIO_CHUNKS) {
+          this.state.pendingAudio.push(event);
+        }
+        if (this.state.appendChunks === 1) {
+          this.deps.log({
+            event: 'client.audio.before_established',
+            note: 'buffering audio until the provider confirms the session',
+          });
+        }
+        return;
+      }
+      this.forward(event);
+      return;
+    }
     this.forward(event);
+  }
+
+  /** Renders the provider's error payload as a short, human-readable suffix. */
+  private describeLastUpstreamError(): string | null {
+    const error = this.state.lastUpstreamError;
+    if (!error) return null;
+    const inner =
+      typeof error.error === 'object' && error.error !== null
+        ? (error.error as Record<string, unknown>)
+        : error;
+    const parts: string[] = [];
+    for (const key of ['message', 'type', 'code', 'param']) {
+      const value = inner[key];
+      if (typeof value === 'string' && value.trim()) parts.push(value.trim());
+    }
+    if (parts.length === 0) return null;
+    return `Provider error: ${parts.join(' | ')}.`;
   }
 
   close(reason: string, message: string): void {
@@ -145,6 +239,7 @@ export class RealtimeSession {
     this.state.closed = true;
     if (this.closeTimer) clearTimeout(this.closeTimer);
     if (this.establishTimer) clearTimeout(this.establishTimer);
+    this.deps.log({ event: 'session.close', reason, detail: message });
     this.deps.send({
       type: 'alfie.closed',
       reason,
@@ -181,27 +276,46 @@ export class RealtimeSession {
       model: this.deps.config.bosonModel,
       hasLocation: this.state.location !== null,
     });
+
+    // Release any audio captured while the session was still coming up.
+    const pending = this.state.pendingAudio;
+    this.state.pendingAudio = [];
+    if (pending.length > 0) {
+      this.deps.log({
+        event: 'client.audio.flushed',
+        chunks: pending.length,
+      });
+      for (const frame of pending) {
+        this.send(frame);
+      }
+    }
   }
 
   private handleUpstreamOpen(): void {
-    this.send({
-      type: 'session.update',
-      session: {
-        model: this.deps.config.bosonModel,
-        instructions: buildInstructions({ mode: this.state.mode }),
-        audio: {
-          input: {
-            format: { type: 'audio/pcm', rate: 24000 },
-            turn_detection: { type: 'server_vad' },
-            transcription: { model: 'higgs-stt-3.1' },
-          },
-          output: {
-            format: { type: 'audio/pcm', rate: 24000 },
-            voice: 'default',
-          },
+    this.deps.log({
+      event: 'upstream.open',
+      endpoint: `${new URL(this.deps.config.bosonRealtimeUrl).origin}${new URL(this.deps.config.bosonRealtimeUrl).pathname}`,
+      model: this.deps.config.bosonModel,
+      // Presence only. The value is never logged.
+      credentialPresent: this.deps.config.bosonApiKey !== undefined,
+    });
+    this.sendSessionUpdate({
+      model: this.deps.config.bosonModel,
+      instructions: buildInstructions({ mode: this.state.mode }),
+      audio: {
+        input: {
+          format: { type: 'audio/pcm', rate: 24000 },
+          // Helps a phone or laptop microphone in a normal room.
+          noise_reduction: { type: 'near_field' },
+          turn_detection: { type: 'server_vad' },
+          transcription: { model: 'higgs-stt-3.1' },
         },
-        output_modalities: ['audio'],
+        output: {
+          format: { type: 'audio/pcm', rate: 24000 },
+          voice: 'default',
+        },
       },
+      output_modalities: ['audio'],
     });
     // The provider sends nothing until the first session.update, so "ready" is
     // held back until that is acknowledged rather than assumed.
@@ -214,6 +328,28 @@ export class RealtimeSession {
     this.establishTimer.unref?.();
   }
 
+  /** Sends session.update and records exactly what was configured. */
+  private sendSessionUpdate(session: Record<string, unknown>): void {
+    const audio = session.audio as Record<string, unknown> | undefined;
+    const input = audio?.input as Record<string, unknown> | undefined;
+    const output = audio?.output as Record<string, unknown> | undefined;
+    this.deps.log({
+      event: 'session.update.sent',
+      model: session.model ?? null,
+      outputModalities: session.output_modalities ?? null,
+      inputFormat: input?.format ?? null,
+      outputFormat: output?.format ?? null,
+      turnDetection: input?.turn_detection ?? null,
+      transcription: input?.transcription ?? null,
+      voice: output?.voice ?? null,
+      instructionChars:
+        typeof session.instructions === 'string'
+          ? session.instructions.length
+          : 0,
+    });
+    this.send({ type: 'session.update', session });
+  }
+
   /**
    * Client session config is merged onto server-authoritative fields, so mode
    * instructions and the model choice cannot be overridden from the device.
@@ -223,16 +359,13 @@ export class RealtimeSession {
       typeof session === 'object' && session !== null
         ? (session as Record<string, unknown>)
         : {};
-    this.send({
-      type: 'session.update',
-      session: {
-        ...clientSession,
-        model: this.deps.config.bosonModel,
-        instructions: buildInstructions({
-          mode: this.state.mode,
-          location: this.state.location ?? undefined,
-        }),
-      },
+    this.sendSessionUpdate({
+      ...clientSession,
+      model: this.deps.config.bosonModel,
+      instructions: buildInstructions({
+        mode: this.state.mode,
+        location: this.state.location ?? undefined,
+      }),
     });
   }
 
@@ -268,7 +401,18 @@ export class RealtimeSession {
     // `session.created` acknowledges the first session.update, and
     // `session.updated` acknowledges a later one. Either means the provider has
     // accepted the credential and configuration.
-    if (event.type === 'session.created' || event.type === 'session.updated') {
+    if (event.type === 'session.created') {
+      this.deps.log({
+        event: 'upstream.session.created',
+        sessionId:
+          typeof (event.session as Record<string, unknown> | undefined)?.id ===
+          'string'
+            ? (event.session as Record<string, unknown>).id
+            : null,
+      });
+      this.establish();
+    } else if (event.type === 'session.updated') {
+      this.deps.log({ event: 'upstream.session.updated' });
       this.establish();
     }
 
@@ -277,27 +421,51 @@ export class RealtimeSession {
   }
 
   private track(event: ServerEvent): void {
-    if (event.type === 'response.output_audio.delta') {
-      this.state.audioChunks += 1;
-      return;
-    }
-    if (event.type === 'response.done') {
-      this.state.turns += 1;
-      return;
-    }
-    if (event.type === 'error') {
-      this.deps.send({
-        type: 'alfie.error',
-        stage: 'voice',
-        message: describeError(event),
-      });
+    switch (event.type) {
+      case 'input_audio_buffer.speech_started':
+        this.deps.log({ event: 'upstream.speech.started' });
+        return;
+      case 'input_audio_buffer.speech_stopped':
+        this.deps.log({ event: 'upstream.speech.stopped' });
+        return;
+      case 'response.output_audio.delta': {
+        this.state.audioChunks += 1;
+        this.state.outputDeltas += 1;
+        if (
+          this.state.outputDeltas === 1 ||
+          this.state.outputDeltas % 100 === 0
+        ) {
+          this.deps.log({
+            event: 'upstream.audio.delta',
+            deltaIndex: this.state.outputDeltas,
+          });
+        }
+        return;
+      }
+      case 'response.done':
+        this.state.turns += 1;
+        return;
+      case 'error': {
+        // Keep the payload verbatim: it is the most specific thing the provider
+        // tells us, and it must survive to the user-facing message.
+        this.state.lastUpstreamError = event;
+        const message = describeError(event);
+        this.deps.log({
+          event: 'upstream.error',
+          detail: JSON.stringify(event).slice(0, 2000),
+        });
+        this.deps.send({ type: 'alfie.error', stage: 'voice', message });
+        return;
+      }
+      default:
+        return;
     }
   }
 
   private handleUpstreamError(error: Error): void {
     // The error text can contain request metadata, so it is classified rather
     // than forwarded verbatim.
-    void error;
+    this.deps.log({ event: 'upstream.transport.error', name: error.name });
     this.fail(
       'upstream-unreachable',
       'Could not reach the voice service. Check the server network connection and try again.',
@@ -307,7 +475,7 @@ export class RealtimeSession {
   private fail(code: string, message: string): void {
     if (this.state.closed) return;
     this.deps.send({ type: 'alfie.error', stage: 'connection', code, message });
-    this.close('upstream-error', message);
+    this.close(code, message);
   }
 
   private forward(event: ServerEvent): void {

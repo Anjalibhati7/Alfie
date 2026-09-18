@@ -56,6 +56,12 @@ function useSessionModel() {
   const [voice, setVoice] = useState<VoiceState>('Listening');
   const [status, setStatus] = useState<ConnectionStatus>('idle');
   const [error, setError] = useState<string | null>(null);
+  /** Live microphone diagnostics, surfaced on the session screen. */
+  const [capturing, setCapturing] = useState(false);
+  const [level, setLevel] = useState(0);
+  const [sentChunks, setSentChunks] = useState(0);
+  const [receivedDeltas, setReceivedDeltas] = useState(0);
+  const [closeCode, setCloseCode] = useState<number | null>(null);
   const [turns, setTurns] = useState<ConversationTurn[]>([]);
   const [draft, setDraft] = useState('');
   const [announcement, setAnnouncement] = useState('');
@@ -224,6 +230,11 @@ function useSessionModel() {
           setStatus(state.status);
           setVoice(state.voice);
           setError(state.error?.message ?? null);
+          setCapturing(state.capturing);
+          setLevel(state.level);
+          setSentChunks(state.sentChunks);
+          setReceivedDeltas(state.receivedDeltas);
+          setCloseCode(state.closeCode);
         },
         onTurns: (next) => {
           turnsRef.current = next;
@@ -360,6 +371,11 @@ function useSessionModel() {
     session,
     voice,
     status,
+    capturing,
+    level,
+    sentChunks,
+    receivedDeltas,
+    closeCode,
     error,
     turns,
     allThoughts,

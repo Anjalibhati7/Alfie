@@ -9,7 +9,12 @@
  * Nothing is buffered beyond the current callback, and no file is written.
  */
 
-import { floatToBase64Pcm16, LinearResampler, WIRE_SAMPLE_RATE } from './pcm';
+import {
+  floatToBase64Pcm16,
+  levelOf,
+  LinearResampler,
+  WIRE_SAMPLE_RATE,
+} from './pcm';
 import {
   CAPTURE_UNSUPPORTED_MESSAGE,
   MIC_DENIED_MESSAGE,
@@ -125,7 +130,11 @@ export async function startPlatformCapture(
   let stopped = false;
   processor.onaudioprocess = (event) => {
     if (stopped) return;
-    const resampled = resampler.process(event.inputBuffer.getChannelData(0));
+    const channel = event.inputBuffer.getChannelData(0);
+    // Report loudness before resampling: this drives the on-screen meter that
+    // proves the browser is actually receiving the microphone.
+    if (handlers.onLevel) handlers.onLevel(levelOf(channel));
+    const resampled = resampler.process(channel);
     if (resampled.length === 0) return;
     handlers.onChunk(floatToBase64Pcm16(resampled));
   };

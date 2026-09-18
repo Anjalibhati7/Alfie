@@ -34,6 +34,18 @@ export type RealtimeState = {
   error: { message: string; recoverable: boolean } | null;
   /** True when the microphone is live. */
   capturing: boolean;
+  /**
+   * Microphone loudness, 0..1. Non-zero only while the microphone is actually
+   * delivering audio, which is the one signal that distinguishes "connected but
+   * deaf" from a working session.
+   */
+  level: number;
+  /** Client audio frames sent this session, for the on-screen proof of life. */
+  sentChunks: number;
+  /** Provider audio deltas received this session. */
+  receivedDeltas: number;
+  /** Provider close code, when the session ended because of one. */
+  closeCode: number | null;
 };
 
 export type RealtimeHandlers = {
@@ -57,6 +69,10 @@ const INITIAL_STATE: RealtimeState = {
   voice: 'Listening',
   error: null,
   capturing: false,
+  level: 0,
+  sentChunks: 0,
+  receivedDeltas: 0,
+  closeCode: null,
 };
 
 /** Events we read fields from. Everything else is ignored on purpose. */
@@ -67,6 +83,7 @@ type WireEvent = {
   message?: unknown;
   code?: unknown;
   reason?: unknown;
+  closeCode?: unknown;
   recoverable?: unknown;
   item_id?: unknown;
   item?: unknown;
@@ -105,8 +122,18 @@ export function createRealtimeSession(
       status: 'error',
       error: { message, recoverable },
       capturing: false,
+      level: 0,
     });
     handlers.onAnnouncement(message);
+  }
+
+  /**
+   * Reports microphone loudness and counts the frames actually sent. Both are
+   * shown in the UI: without them a silent microphone and a dead session look
+   * exactly the same.
+   */
+  function reportLevel(level: number): void {
+    emitState({ level: Math.round(level * 100) / 100 });
   }
 
   function stopCapture(): void {
@@ -146,13 +173,30 @@ export function createRealtimeSession(
         return;
       }
 
+      case 'alfie.diagnostic': {
+        // Server-side view of why the session ended. Kept so the UI can show the
+        // raw close code alongside the plain-language reason.
+        emitState({
+          closeCode:
+            typeof event.closeCode === 'number' ? event.closeCode : null,
+        });
+        return;
+      }
+
       case 'alfie.closed': {
+        if (stopped) return;
         const message =
           typeof event.message === 'string'
             ? event.message
             : 'The session ended.';
-        if (stopped) return;
-        fail(message, event.recoverable !== false);
+        // Never let a generic close message replace a specific provider error
+        // that already explained what went wrong.
+        const existing = state.error?.message;
+        const isGeneric =
+          message.startsWith('The voice service closed the session') ||
+          message.startsWith('voice service closed the session');
+        const finalMessage = isGeneric && existing ? existing : message;
+        fail(finalMessage, event.recoverable !== false);
         return;
       }
 
@@ -196,6 +240,7 @@ export function createRealtimeSession(
       case 'response.output_audio.delta': {
         if (typeof event.delta === 'string') {
           player.enqueue(event.delta);
+          emitState({ receivedDeltas: state.receivedDeltas + 1 });
           if (state.voice !== 'Speaking') emitState({ voice: 'Speaking' });
         }
         return;
@@ -317,11 +362,13 @@ export function createRealtimeSession(
       capture = await startMicCapture({
         onChunk: (base64Pcm16) => {
           if (paused || stopped) return;
+          emitState({ sentChunks: state.sentChunks + 1 });
           send({ type: 'input_audio_buffer.append', audio: base64Pcm16 });
         },
+        onLevel: reportLevel,
         onError: (error) => {
           stopCapture();
-          emitState({ capturing: false });
+          emitState({ capturing: false, level: 0 });
           fail(error.message, true);
         },
       });
@@ -372,13 +419,15 @@ export function createRealtimeSession(
       // Stop the model mid-utterance and keep the microphone closed.
       send({ type: 'response.cancel' });
       stopCapture();
-      emitState({ capturing: false });
+      emitState({ capturing: false, level: 0 });
     } else if (!capture && !stopped) {
       void startMicCapture({
         onChunk: (base64Pcm16) => {
           if (paused || stopped) return;
+          emitState({ sentChunks: state.sentChunks + 1 });
           send({ type: 'input_audio_buffer.append', audio: base64Pcm16 });
         },
+        onLevel: reportLevel,
         onError: (error) => fail(error.message, true),
       })
         .then((next) => {
@@ -386,7 +435,7 @@ export function createRealtimeSession(
           emitState({ capturing: true });
         })
         .catch(() => {
-          emitState({ capturing: false });
+          emitState({ capturing: false, level: 0 });
           handlers.onAnnouncement(
             'Still paused without a microphone. Resume again to retry.',
           );

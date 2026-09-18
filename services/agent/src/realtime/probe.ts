@@ -11,6 +11,7 @@
 
 import WebSocket from 'ws';
 import { loadConfig } from '../config.js';
+import { explainClose } from './closeCodes.js';
 import { buildInstructions } from './prompt.js';
 
 const config = loadConfig();
@@ -126,6 +127,21 @@ socket.on('unexpected-response', (_request, response) => {
   finish(
     1,
     `Handshake rejected with HTTP ${response.statusCode}. A 401/403 means the API key is wrong or has no credit.`,
+  );
+});
+
+/**
+ * Critical: Boson completes the WebSocket handshake and only THEN closes the
+ * socket with a code. Without this handler the probe appears to "connect
+ * successfully" and then silently times out, which reads as success. Code 3000
+ * in particular means the API key was rejected.
+ */
+socket.on('close', (code, reason) => {
+  const reasonText = reason?.toString() ?? '';
+  const explained = explainClose(code, reasonText);
+  finish(
+    code === 1000 && audioBytes > 0 ? 0 : 1,
+    `Socket closed before a response completed. ${explained.message}`,
   );
 });
 
