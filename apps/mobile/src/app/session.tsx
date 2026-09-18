@@ -7,6 +7,9 @@ import { Button, Copy, Eyebrow, Rule, ui } from '../components/ui';
 import { colors, spacing } from '../design/tokens';
 import { formatTime, useSession, type LocationMode } from '../state/session';
 
+/** Places shown live on the session screen; the Field Log keeps them all. */
+const RECENT_PLACES = 12;
+
 export default function LiveSessionScreen() {
   const {
     session,
@@ -58,6 +61,10 @@ export default function LiveSessionScreen() {
           : 'Alfie is speaking. Say anything to interrupt.';
 
   const recent = turns.slice(-4);
+  // A long demo walk accumulates one place every few seconds; the session screen
+  // shows the most recent ones and the Field Log keeps the full route.
+  const shownTrail = trail.slice(-RECENT_PLACES);
+  const trailOffset = trail.length - shownTrail.length;
 
   function finish() {
     end();
@@ -137,9 +144,15 @@ export default function LiveSessionScreen() {
             accessibilityRole="list"
             accessibilityLabel="Places visited this session"
           >
-            {trail.map((point, index) => (
+            {trail.length > RECENT_PLACES && (
+              <Copy kind="label" style={ui.secondary}>
+                Showing the last {RECENT_PLACES} of {trail.length}
+              </Copy>
+            )}
+            {shownTrail.map((point, index) => (
               <Copy key={`${point.id}-${index}`} kind="label">
-                {String(index + 1).padStart(2, '0')} · {point.label}
+                {String(trailOffset + index + 1).padStart(2, '0')} ·{' '}
+                {point.label}
               </Copy>
             ))}
           </View>
