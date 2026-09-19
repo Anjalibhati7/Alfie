@@ -14,7 +14,13 @@ import {
  * The Field Log is a memory of the outing, not a record of the conversation.
  * Each card opens the session it describes; no card ever starts a new session.
  */
-function SessionCard({ session }: { session: JournalSession }) {
+function SessionCard({
+  session,
+  index,
+}: {
+  session: JournalSession;
+  index: number;
+}) {
   const place = session.placeLabel ?? 'Walk';
   const themes = session.themes.slice(0, 3).join(' · ');
   const summary = `${relativeDayLabel(session.startedAt)}, ${place}. ${session.mode}, ${durationLabel(session.durationMs)}.${
@@ -29,9 +35,14 @@ function SessionCard({ session }: { session: JournalSession }) {
       accessibilityHint="Opens this session"
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
     >
-      <Copy kind="label" style={ui.secondary}>
-        {relativeDayLabel(session.startedAt)} · {place}
-      </Copy>
+      <View style={styles.cardHead}>
+        <Copy kind="label" style={styles.index}>
+          {String(index + 1).padStart(2, '0')}
+        </Copy>
+        <Copy kind="label" style={ui.secondary}>
+          {relativeDayLabel(session.startedAt)} · {place}
+        </Copy>
+      </View>
       <Copy kind="heading" style={styles.cardTitle}>
         {session.mode} · {durationLabel(session.durationMs)}
       </Copy>
@@ -80,8 +91,8 @@ export default function FieldLogScreen() {
         </View>
       ) : (
         <View style={styles.list}>
-          {completed.map((item) => (
-            <SessionCard key={item.id} session={item} />
+          {completed.map((item, index) => (
+            <SessionCard key={item.id} session={item} index={index} />
           ))}
         </View>
       )}
@@ -102,10 +113,12 @@ const styles = StyleSheet.create({
   list: { marginTop: spacing.xxl, gap: spacing.xl },
   card: {
     gap: spacing.sm,
-    paddingVertical: spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: colors.powder,
+    paddingVertical: spacing.xl,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.powder,
   },
+  cardHead: { flexDirection: 'row', gap: spacing.md, alignItems: 'baseline' },
+  index: { color: colors.yale },
   cardPressed: { opacity: 0.6 },
   cardTitle: { color: colors.ink },
   resume: {

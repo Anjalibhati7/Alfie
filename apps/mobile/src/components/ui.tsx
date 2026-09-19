@@ -52,6 +52,7 @@ export function Button({
   selected,
   hint,
   accessibilityLabel,
+  variant = 'solid',
 }: {
   label: string;
   onPress: () => void;
@@ -66,6 +67,8 @@ export function Button({
    * still tell them apart.
    */
   accessibilityLabel?: string;
+  /** 'quiet' drops the box for a text-only control in dense, editorial layouts. */
+  variant?: 'solid' | 'quiet';
 }) {
   const [focused, setFocused] = useState(false);
   return (
@@ -80,8 +83,10 @@ export function Button({
       accessibilityState={{ disabled, expanded, selected }}
       style={({ pressed }) => [
         styles.button,
+        variant === 'quiet' && styles.quiet,
         primary && styles.primary,
-        selected && styles.selected,
+        selected &&
+          (variant === 'quiet' ? styles.quietSelected : styles.selected),
         focused && styles.focused,
         pressed && (primary ? styles.primaryPressed : styles.pressed),
         disabled && styles.disabled,
@@ -89,7 +94,11 @@ export function Button({
     >
       <Copy
         kind="label"
-        style={[styles.buttonText, primary && styles.primaryText]}
+        style={[
+          styles.buttonText,
+          primary && styles.primaryText,
+          variant === 'quiet' && !primary && styles.quietText,
+        ]}
       >
         {label}
       </Copy>
@@ -142,6 +151,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   buttonText: { fontWeight: '600', textAlign: 'center' },
+  quiet: {
+    borderWidth: 0,
+    paddingHorizontal: spacing.xs,
+    alignItems: 'flex-start',
+  },
+  /** Selected quiet control: a powder chip, never a bordered box. */
+  quietSelected: { backgroundColor: colors.powder },
+  quietText: { color: colors.yale },
   primary: {
     backgroundColor: semanticColors.action,
     borderColor: semanticColors.action,

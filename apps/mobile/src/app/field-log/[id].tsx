@@ -174,15 +174,20 @@ export default function SessionDetailScreen() {
           <Rule />
           <View style={styles.section}>
             <Eyebrow>Moments</Eyebrow>
-            {session.moments.map((moment) => (
+            {session.moments.map((moment, index) => (
               <View
                 key={`${moment.atMs}-${moment.label}`}
                 style={styles.moment}
               >
-                <Copy kind="label" style={styles.momentTime}>
-                  {offsetLabel(moment.atMs)}
+                <Copy kind="label" style={styles.momentIndex}>
+                  {String(index + 1).padStart(2, '0')}
                 </Copy>
-                <Copy style={styles.momentLabel}>{moment.label}</Copy>
+                <View style={styles.momentBody}>
+                  <Copy kind="label" style={styles.momentTime}>
+                    {offsetLabel(moment.atMs)}
+                  </Copy>
+                  <Copy style={styles.momentLabel}>{moment.label}</Copy>
+                </View>
               </View>
             ))}
           </View>
@@ -258,7 +263,9 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   moment: { flexDirection: 'row', gap: spacing.md, alignItems: 'baseline' },
-  momentTime: { color: colors.yale, minWidth: 48 },
+  momentIndex: { color: colors.yale },
+  momentBody: { flexShrink: 1, gap: 2 },
+  momentTime: { color: colors.yale },
   momentLabel: { flexShrink: 1 },
   more: { paddingVertical: spacing.sm, alignSelf: 'flex-start' },
   footer: { marginTop: spacing.xxl },

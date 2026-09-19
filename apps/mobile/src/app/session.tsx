@@ -3,12 +3,9 @@ import { useStatusAnnouncement } from '../accessibility/useStatusAnnouncement';
 import { Redirect, router } from 'expo-router';
 import { StyleSheet, TextInput, View } from 'react-native';
 import { Screen } from '../components/Screen';
-import { Button, Copy, Eyebrow, Rule, ui } from '../components/ui';
+import { Button, Copy, Eyebrow, ui } from '../components/ui';
 import { colors, spacing } from '../design/tokens';
 import { formatTime, useSession, type LocationMode } from '../state/session';
-
-/** Places shown live on the session screen; the Field Log keeps them all. */
-const RECENT_PLACES = 12;
 
 export default function LiveSessionScreen() {
   const {
@@ -16,18 +13,14 @@ export default function LiveSessionScreen() {
     voice,
     status,
     error,
-    turns,
     draft,
     setDraft,
     place,
     trail,
-    locationLabel,
     locationMode,
     persistent,
     capturing,
     level,
-    sentChunks,
-    receivedDeltas,
     closeCode,
     announcement,
     pause,
@@ -49,24 +42,15 @@ export default function LiveSessionScreen() {
   if (!session.active) return <Redirect href="/field-log" />;
 
   /**
-   * A single explicit stage so the state of the audio path is never ambiguous:
-   * Connecting → Microphone active → Listening → Thinking → Speaking.
+   * One explicit stage so the audio path is never ambiguous. These are read from
+   * existing session state; nothing here produces them.
    */
   const stage: { label: string; detail: string } = session.paused
-    ? {
-        label: 'Paused',
-        detail: 'Microphone off. Resume when you are ready.',
-      }
+    ? { label: 'Paused', detail: 'Microphone off. Resume when you are ready.' }
     : status === 'error'
-      ? {
-          label: 'Stopped',
-          detail: error ?? 'The voice session stopped.',
-        }
+      ? { label: 'Stopped', detail: error ?? 'The voice session stopped.' }
       : status === 'connecting'
-        ? {
-            label: 'Connecting',
-            detail: 'Opening a secure voice connection.',
-          }
+        ? { label: 'Connecting', detail: 'Opening a secure voice connection.' }
         : !capturing
           ? {
               label: 'Microphone waiting',
@@ -88,14 +72,7 @@ export default function LiveSessionScreen() {
                       : 'Microphone live. Say something.',
                 };
 
-  const stateWord = stage.label;
-  const stateDetail = stage.detail;
-
-  const recent = turns.slice(-4);
-  // A long demo walk accumulates one place every few seconds; the session screen
-  // shows the most recent ones and the Field Log keeps the full route.
-  const shownTrail = trail.slice(-RECENT_PLACES);
-  const trailOffset = trail.length - shownTrail.length;
+  const levelPercent = Math.round(level * 100);
 
   function finish() {
     // Capture the id before ending: the user should land on the memory of the
@@ -107,34 +84,21 @@ export default function LiveSessionScreen() {
 
   return (
     <Screen>
-      <View style={ui.row}>
+      <View style={styles.masthead}>
         <Eyebrow>{session.mode}</Eyebrow>
         <Copy
           kind="label"
+          style={styles.timer}
           accessibilityLabel={`Session duration ${formatTime(session.elapsed)}`}
         >
           {formatTime(session.elapsed)}
         </Copy>
       </View>
-      <Rule />
-
-      <Copy kind="label" style={ui.secondary}>
-        {status === 'connected'
-          ? capturing
-            ? 'Live voice · Microphone active'
-            : 'Live voice · Connected, microphone idle'
-          : status === 'connecting'
-            ? 'Live voice · Connecting'
-            : 'Live voice · Not connected'}
-        {locationLabel ? ` · ${locationLabel}` : ''}
-      </Copy>
 
       {error !== null && (
         <View style={styles.error} accessibilityLiveRegion="assertive">
-          <Copy kind="heading" accessibilityRole="header">
-            Voice connection problem
-          </Copy>
-          <Copy kind="label">{error}</Copy>
+          <Eyebrow>Connection</Eyebrow>
+          <Copy kind="heading">{error}</Copy>
           {closeCode !== null && (
             <Copy kind="label" style={ui.secondary}>
               Voice service close code {closeCode}
@@ -147,105 +111,72 @@ export default function LiveSessionScreen() {
                     : ''}
             </Copy>
           )}
-          <Button label="Retry connection" primary onPress={retry} />
+          <Button label="Retry" primary onPress={retry} />
         </View>
       )}
 
-      {/*
-        Microphone meter. This is the only thing on screen that proves the
-        browser is actually receiving the user's voice: a working socket with a
-        dead microphone looks identical without it.
-      */}
-      <View style={styles.mic} accessibilityLiveRegion="polite">
-        <View style={ui.row}>
-          <Eyebrow>Microphone</Eyebrow>
-          <Copy kind="label" style={ui.secondary}>
-            {capturing
-              ? level > 0.02
-                ? 'Receiving your voice'
-                : 'Live — silence'
-              : 'Not capturing'}
-          </Copy>
-        </View>
-        <View
-          style={styles.meterTrack}
-          accessibilityRole="progressbar"
-          accessibilityLabel="Microphone input level"
-          accessibilityValue={{
-            min: 0,
-            max: 100,
-            now: Math.round(level * 100),
-          }}
-        >
-          <View
-            style={[styles.meterFill, { width: `${Math.round(level * 100)}%` }]}
-          />
-        </View>
-        <Copy kind="label" style={ui.secondary}>
-          {sentChunks} audio frame{sentChunks === 1 ? '' : 's'} sent ·{' '}
-          {receivedDeltas} received
-        </Copy>
-      </View>
-
-      <View style={styles.space}>
-        <Eyebrow>{session.paused ? 'Session paused' : 'Voice state'}</Eyebrow>
+      {/* The voice state is the whole screen. Nothing competes with it. */}
+      <View style={styles.stage}>
         <Copy
           kind="title"
           accessibilityRole="header"
           accessibilityLiveRegion="polite"
-          accessibilityLabel={`Voice state: ${stateWord}`}
+          accessibilityLabel={`Voice state: ${stage.label}`}
         >
-          {stateWord}
+          {stage.label}
         </Copy>
-        <Copy style={ui.secondary}>{stateDetail}</Copy>
+        <Copy style={ui.secondary}>{stage.detail}</Copy>
+
         {voice === 'Speaking' && !session.paused && status === 'connected' && (
-          <Button label="Interrupt and speak" onPress={interrupt} />
+          <Button
+            label="Interrupt"
+            variant="quiet"
+            onPress={interrupt}
+            hint="Stops Alfie speaking so you can talk"
+          />
         )}
       </View>
 
-      <Rule />
+      {/* Subtle voice activity. The only on-screen proof the microphone works. */}
+      <View style={styles.activity} accessibilityLiveRegion="polite">
+        <View
+          style={styles.meterTrack}
+          accessibilityRole="progressbar"
+          accessibilityLabel="Microphone input level"
+          accessibilityValue={{ min: 0, max: 100, now: levelPercent }}
+        >
+          <View style={[styles.meterFill, { width: `${levelPercent}%` }]} />
+        </View>
+        <View style={styles.activityRow}>
+          <Eyebrow>{capturing ? 'Mic on' : 'Mic off'}</Eyebrow>
+          <Copy kind="label" style={styles.muted}>
+            {capturing
+              ? level > 0.02
+                ? 'Hearing you'
+                : 'Silent'
+              : 'Not capturing'}
+          </Copy>
+        </View>
+      </View>
 
-      <View style={ui.section}>
-        <Eyebrow>Where you are</Eyebrow>
+      <View style={styles.area}>
+        <Eyebrow>Current area</Eyebrow>
         <Copy kind="heading">
           {place ? place.label : 'Location not in use'}
         </Copy>
-        <Copy kind="label" style={ui.secondary}>
-          {place?.simulated
-            ? 'Simulated demo route. You are indoors and walking a scripted path.'
-            : place
-              ? 'Approximate position from this device.'
-              : 'Alfie works without location. Conversation still uses the microphone.'}
+        <Copy kind="label" style={styles.muted}>
+          {place
+            ? `${place.simulated ? 'Simulated route' : 'Approximate position'} · ${
+                trail.length
+              } place${trail.length === 1 ? '' : 's'}`
+            : 'Alfie works without location.'}
         </Copy>
-        <Copy kind="label" style={ui.secondary}>
-          {trail.length > 0
-            ? `${trail.length} place${trail.length === 1 ? '' : 's'} visited this session`
-            : 'No places recorded yet'}
-        </Copy>
-        {trail.length > 0 && (
-          <View
-            style={styles.trail}
-            accessibilityRole="list"
-            accessibilityLabel="Places visited this session"
-          >
-            {trail.length > RECENT_PLACES && (
-              <Copy kind="label" style={ui.secondary}>
-                Showing the last {RECENT_PLACES} of {trail.length}
-              </Copy>
-            )}
-            {shownTrail.map((point, index) => (
-              <Copy key={`${point.id}-${index}`} kind="label">
-                {String(trailOffset + index + 1).padStart(2, '0')} ·{' '}
-                {point.label}
-              </Copy>
-            ))}
-          </View>
-        )}
-        <View style={ui.row}>
+        <View style={styles.sources}>
           {(['demo', 'real'] as LocationMode[]).map((mode) => (
             <Button
               key={mode}
               label={mode === 'demo' ? 'Demo route' : 'This device'}
+              variant="quiet"
               selected={locationMode === mode}
               onPress={() => changeLocationMode(mode)}
               hint={
@@ -258,36 +189,10 @@ export default function LiveSessionScreen() {
         </View>
       </View>
 
-      <Rule />
-
-      <View style={ui.section}>
-        <Eyebrow>Conversation</Eyebrow>
-        {recent.length === 0 ? (
-          <Copy style={ui.secondary}>
-            Nothing said yet. Start with anything you notice.
-          </Copy>
-        ) : (
-          recent.map((turn) => (
-            <View key={turn.id} style={styles.turn}>
-              <Copy kind="label" style={ui.secondary}>
-                {turn.role === 'user' ? 'You' : 'Alfie'}
-                {turn.streaming ? ' · speaking' : ''}
-              </Copy>
-              <Copy>{turn.text}</Copy>
-            </View>
-          ))
-        )}
-        <Copy kind="label" style={ui.secondary}>
-          The spoken transcript is shown only for this session and is not saved
-          or uploaded.
-        </Copy>
-      </View>
-
-      <Rule />
-
-      <View style={ui.section}>
+      <View style={styles.actions}>
         <Button
-          label="Save a thought or discovery"
+          label="Save a thought"
+          variant="quiet"
           expanded={note}
           onPress={() => {
             setNote(!note);
@@ -296,12 +201,6 @@ export default function LiveSessionScreen() {
         />
         {note && (
           <View style={ui.section}>
-            <Copy kind="label">
-              Your note ·{' '}
-              {persistent
-                ? 'Saved on this device only.'
-                : 'Kept in memory for this run only; this device cannot store it.'}
-            </Copy>
             <TextInput
               accessibilityLabel="Thought or discovery"
               placeholder="What would you like to keep?"
@@ -312,8 +211,13 @@ export default function LiveSessionScreen() {
               value={draft}
               onChangeText={setDraft}
             />
+            <Copy kind="label" style={styles.muted}>
+              {persistent
+                ? 'Saved on this device only.'
+                : 'Kept for this run only; this device cannot store it.'}
+            </Copy>
             <Button
-              label="Save to Field Log"
+              label="Keep it"
               primary
               disabled={!draft.trim()}
               onPress={() => {
@@ -325,7 +229,8 @@ export default function LiveSessionScreen() {
               }}
             />
             <Button
-              label="Close editor, keep draft"
+              label="Cancel"
+              variant="quiet"
               onPress={() => setNote(false)}
             />
           </View>
@@ -335,37 +240,35 @@ export default function LiveSessionScreen() {
             {saved}
           </Copy>
         )}
+
+        <View style={styles.controls}>
+          <Button
+            label={session.paused ? 'Resume' : 'Pause'}
+            variant="quiet"
+            onPress={pause}
+            hint={
+              session.paused
+                ? 'Reopens the microphone.'
+                : 'Closes the microphone until you resume.'
+            }
+          />
+          <Button label="End" primary onPress={() => setEnding(true)} />
+        </View>
       </View>
 
-      <Rule />
-
-      <View style={ui.row}>
-        <Button
-          label={session.paused ? 'Resume session' : 'Pause session'}
-          primary
-          onPress={pause}
-          hint={
-            session.paused
-              ? 'Reopens the microphone.'
-              : 'Closes the microphone and stops the voice until you resume.'
-          }
-        />
-        <Button label="End session" onPress={() => setEnding(true)} />
-      </View>
       {ending && (
         <View style={styles.confirm}>
-          <Copy accessibilityRole="header" kind="heading">
-            Finish for now?
-          </Copy>
-          <Copy kind="label">
+          <Eyebrow>Finish</Eyebrow>
+          <Copy kind="heading">Finish for now?</Copy>
+          <Copy kind="label" style={styles.muted}>
             {draft.trim()
-              ? 'You have an unsaved thought. Save it before ending, or explicitly discard it.'
-              : 'Ending stops the microphone and closes the voice connection straight away.'}
+              ? 'You have an unsaved thought. Keep it, or discard it.'
+              : 'Ending stops the microphone and closes the voice connection.'}
           </Copy>
           {draft.trim() ? (
             <>
               <Button
-                label="Save thought and finish"
+                label="Keep thought and finish"
                 primary
                 onPress={() => {
                   save();
@@ -373,7 +276,8 @@ export default function LiveSessionScreen() {
                 }}
               />
               <Button
-                label="Discard draft and finish"
+                label="Discard and finish"
+                variant="quiet"
                 onPress={() => {
                   setDraft('');
                   finish();
@@ -381,13 +285,13 @@ export default function LiveSessionScreen() {
               />
             </>
           ) : (
-            <Button
-              label="Finish and view Field Log"
-              primary
-              onPress={finish}
-            />
+            <Button label="Finish" primary onPress={finish} />
           )}
-          <Button label="Keep session open" onPress={() => setEnding(false)} />
+          <Button
+            label="Keep going"
+            variant="quiet"
+            onPress={() => setEnding(false)}
+          />
         </View>
       )}
     </Screen>
@@ -395,34 +299,53 @@ export default function LiveSessionScreen() {
 }
 
 const styles = StyleSheet.create({
-  space: { paddingVertical: spacing.xxl, gap: spacing.lg },
-  error: {
-    marginTop: spacing.xl,
-    gap: spacing.lg,
-    borderLeftWidth: 2,
-    borderLeftColor: colors.ink,
-    paddingLeft: spacing.lg,
+  masthead: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
   },
-  trail: {
-    gap: spacing.sm,
-    borderLeftWidth: 2,
-    borderLeftColor: colors.powder,
-    paddingLeft: spacing.lg,
+  timer: { color: colors.ink },
+  /** Asymmetrical: the state sits low and gets the most air. */
+  stage: {
+    paddingTop: spacing.xxxl,
+    paddingBottom: spacing.xxl,
+    gap: spacing.md,
   },
-  turn: { gap: spacing.xs, marginBottom: spacing.lg },
-  mic: { marginTop: spacing.xl, gap: spacing.sm },
+  activity: { gap: spacing.sm },
   meterTrack: {
-    height: 6,
-    borderRadius: 3,
+    height: 2,
     backgroundColor: colors.powder,
     overflow: 'hidden',
   },
-  meterFill: { height: 6, backgroundColor: colors.yale },
-  confirm: {
+  meterFill: { height: 2, backgroundColor: colors.yale },
+  activityRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+  },
+  area: {
+    marginTop: spacing.xxxl,
+    gap: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.powder,
+    paddingTop: spacing.xl,
+  },
+  sources: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs },
+  actions: { marginTop: spacing.xxxl, gap: spacing.lg },
+  controls: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
+  muted: { color: colors.yale },
+  error: {
     marginTop: spacing.xl,
-    gap: spacing.lg,
+    gap: spacing.sm,
     borderLeftWidth: 2,
     borderLeftColor: colors.ink,
     paddingLeft: spacing.lg,
+  },
+  confirm: {
+    marginTop: spacing.xxxl,
+    gap: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.powder,
+    paddingTop: spacing.xl,
   },
 });
