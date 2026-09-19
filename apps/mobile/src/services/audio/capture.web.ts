@@ -24,6 +24,7 @@ import {
   type MicCaptureHandlers,
 } from './types';
 import { createAudioContext } from './context';
+import { createLimitedDiag, voiceDiag } from './diagnostics';
 
 type ScriptProcessorLike = {
   onaudioprocess:
@@ -53,6 +54,17 @@ function readMediaDevices(): {
       devices,
     ),
   };
+}
+
+/** Real channel count of the microphone track, for the diagnostics. */
+function trackChannelCount(stream: unknown): number {
+  const tracks = (
+    stream as { getAudioTracks?: () => unknown[] }
+  )?.getAudioTracks?.();
+  const settings = (
+    tracks?.[0] as { getSettings?: () => { channelCount?: number } } | undefined
+  )?.getSettings?.();
+  return settings?.channelCount ?? 0;
 }
 
 function classifyCaptureError(error: unknown): AudioTransportError {
@@ -127,6 +139,16 @@ export async function startPlatformCapture(
   silence.gain.value = 0;
   const resampler = new LinearResampler(context.sampleRate, WIRE_SAMPLE_RATE);
 
+  voiceDiag('capture.started', {
+    contextSampleRate: context.sampleRate,
+    resampling: !resampler.passthrough,
+    outputRate: WIRE_SAMPLE_RATE,
+    processorBufferSize: 4096,
+    contextState: context.state,
+    trackChannels: trackChannelCount(stream),
+  });
+  const logChunk = createLimitedDiag('capture.chunk', 5);
+
   let stopped = false;
   processor.onaudioprocess = (event) => {
     if (stopped) return;
@@ -136,7 +158,18 @@ export async function startPlatformCapture(
     if (handlers.onLevel) handlers.onLevel(levelOf(channel));
     const resampled = resampler.process(channel);
     if (resampled.length === 0) return;
-    handlers.onChunk(floatToBase64Pcm16(resampled));
+    const base64 = floatToBase64Pcm16(resampled);
+    logChunk({
+      browserContextRate: context.sampleRate,
+      sentRate: WIRE_SAMPLE_RATE,
+      inputSamples: channel.length,
+      outputSamples: resampled.length,
+      base64Chars: base64.length,
+      pcmBytes: resampled.length * 2,
+      // levelOf amplifies by 4 for the meter; this is the raw figure.
+      rms: Number((levelOf(channel) / 4).toFixed(4)),
+    });
+    handlers.onChunk(base64);
   };
 
   source.connect(processor);

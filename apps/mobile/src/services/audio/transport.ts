@@ -19,6 +19,7 @@
  */
 
 import { isNativeCaptureAvailable, startPlatformCapture } from './capture';
+import { createLimitedDiag, voiceDiag } from './diagnostics';
 import { createAudioContext, isAudioContextAvailable } from './context';
 import {
   base64Pcm16ToFloat,
@@ -53,10 +54,12 @@ export async function startMicCapture(
   return startPlatformCapture(handlers);
 }
 
-/** How much audio may sit scheduled ahead of the playhead, in seconds. */
-const MAX_SCHEDULE_AHEAD_S = 1;
-/** Small lead so the first chunk starts cleanly rather than mid-callback. */
-const START_LEAD_S = 0.03;
+/**
+ * If the reply is already this far ahead of the playhead, something is wrong
+ * (a stalled context, or deltas arriving far faster than realtime). Dropping a
+ * chunk is survivable; letting the queue grow without bound is not.
+ */
+const DROP_ABOVE_LEAD_S = 20;
 
 /**
  * Creates the speaker. The context is created eagerly so the first audio delta
@@ -68,6 +71,13 @@ export function createPcmPlayer(): PcmPlayer {
     ? new LinearResampler(WIRE_SAMPLE_RATE, context.sampleRate)
     : null;
 
+  voiceDiag('player.created', {
+    contextState: context?.state ?? 'none',
+    contextSampleRate: context?.sampleRate ?? 0,
+    wireRate: WIRE_SAMPLE_RATE,
+    resampling: resampler ? !resampler.passthrough : false,
+  });
+
   /**
    * Scheduled sources with the time each finishes. The completion callback is
    * named differently on native and web, so sources are pruned by time instead.
@@ -75,13 +85,21 @@ export function createPcmPlayer(): PcmPlayer {
   let scheduled: { source: { stop: () => void }; endsAt: number }[] = [];
   let nextStartTime = 0;
   let disposed = false;
+  let scheduledCount = 0;
+  const logFirstBuffer = createLimitedDiag('playback.first_buffer', 1);
 
   function prune(now: number): void {
     scheduled = scheduled.filter((item) => item.endsAt > now);
   }
 
   function schedule(base64: string): void {
-    if (!context || !resampler) return;
+    if (!context || !resampler) {
+      voiceDiag('playback.unavailable', {
+        hasContext: Boolean(context),
+        hasResampler: Boolean(resampler),
+      });
+      return;
+    }
     const samples = resampler.process(base64Pcm16ToFloat(base64));
     if (samples.length === 0) return;
 
@@ -102,20 +120,43 @@ export function createPcmPlayer(): PcmPlayer {
 
     const now = context.currentTime;
     prune(now);
-    // If audio is already queued past the allowed window, start as soon as we
-    // can rather than falling further behind.
-    const startAt = Math.max(
-      now + START_LEAD_S,
-      Math.min(nextStartTime, now + MAX_SCHEDULE_AHEAD_S),
-    );
+
+    /**
+     * Chunks must play strictly in order, so `nextStartTime` is the authority.
+     *
+     * An earlier version clamped this to `now + 1` to "catch up"; that made
+     * every chunk past one second share a start time, so they all played at
+     * once and the reply became unintelligible. Dropping a chunk is far less
+     * damaging than overlapping the queue.
+     */
+    const startAt = Math.max(now + 0.03, nextStartTime);
+    if (startAt > now + DROP_ABOVE_LEAD_S) {
+      voiceDiag('playback.dropped_chunk', {
+        leadSeconds: Number((startAt - now).toFixed(2)),
+      });
+      return;
+    }
+
     const duration = samples.length / context.sampleRate;
     nextStartTime = startAt + duration;
     scheduled.push({ source, endsAt: nextStartTime });
+    scheduledCount += 1;
+
+    logFirstBuffer({
+      scheduledAt: Number(startAt.toFixed(3)),
+      currentTime: Number(now.toFixed(3)),
+      seconds: Number(duration.toFixed(3)),
+      samples: samples.length,
+      contextState: context.state,
+    });
 
     try {
       source.start(startAt);
-    } catch {
+    } catch (error) {
       scheduled = scheduled.filter((item) => item.source !== source);
+      voiceDiag('playback.start_failed', {
+        message: error instanceof Error ? error.message : 'unknown',
+      });
     }
   }
 
@@ -123,9 +164,24 @@ export function createPcmPlayer(): PcmPlayer {
     enqueue(base64: string) {
       if (disposed || !base64 || !context) return;
       if (context.state === 'suspended') {
+        // Best effort. The reliable fix is resume() from the starting gesture.
         void context.resume().catch(() => undefined);
       }
       schedule(base64);
+    },
+    state() {
+      return context?.state ?? 'none';
+    },
+    async resume() {
+      if (!context) return;
+      try {
+        if (context.state !== 'running') await context.resume();
+      } catch (error) {
+        voiceDiag('player.resume_failed', {
+          message: error instanceof Error ? error.message : 'unknown',
+        });
+      }
+      voiceDiag('player.resumed', { contextState: context.state });
     },
     flush() {
       const sources = scheduled;
@@ -142,6 +198,7 @@ export function createPcmPlayer(): PcmPlayer {
     dispose() {
       disposed = true;
       this.flush();
+      voiceDiag('player.disposed', { scheduledCount });
       void context?.close?.().catch(() => undefined);
     },
   };

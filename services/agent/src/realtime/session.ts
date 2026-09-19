@@ -74,6 +74,17 @@ type SessionState = {
   baseSession: Record<string, unknown> | null;
 };
 
+/**
+ * ISO-639-1 hint for input transcription. Higgs accepts an optional language
+ * field on the transcription config; supplying it stops the recogniser from
+ * auto-detecting, which was returning a different language entirely for quiet
+ * or noisy speech. Override with ALFIE_INPUT_LANGUAGE.
+ */
+function inputLanguage(): string {
+  const value = process.env.ALFIE_INPUT_LANGUAGE?.trim();
+  return value ? value.slice(0, 5) : 'en';
+}
+
 /** How long to wait for the provider to acknowledge a session. */
 const ESTABLISH_TIMEOUT_MS = 10_000;
 
@@ -340,7 +351,13 @@ export class RealtimeSession {
           // Helps a phone or laptop microphone in a normal room.
           noise_reduction: { type: 'near_field' },
           turn_detection: { type: 'server_vad' },
-          transcription: { model: 'higgs-stt-3.1' },
+          // The language hint is deliberate: without it the recogniser
+          // auto-detects, and noisy or quiet input was being detected as a
+          // different language entirely. See ALFIE_INPUT_LANGUAGE.
+          transcription: {
+            model: 'higgs-stt-3.1',
+            language: inputLanguage(),
+          },
         },
         output: {
           format: { type: 'audio/pcm', rate: 24000 },
@@ -474,7 +491,16 @@ export class RealtimeSession {
         this.state.outputDeltas += 1;
         // The first delta is the proof that the provider is speaking back.
         if (this.state.outputDeltas === 1) {
-          this.deps.log({ event: 'upstream.audio.first_delta' });
+          this.deps.log({
+            event: 'upstream.audio.first_delta',
+            // Metadata only: never the audio itself.
+            base64Chars:
+              typeof event.delta === 'string' ? event.delta.length : 0,
+            byteLength:
+              typeof event.delta === 'string'
+                ? Math.floor((event.delta.length * 3) / 4)
+                : 0,
+          });
         } else if (this.state.outputDeltas % 100 === 0) {
           this.deps.log({
             event: 'upstream.audio.delta',

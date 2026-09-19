@@ -36,6 +36,14 @@ export type MicCapture = {
 export type PcmPlayer = {
   /** Play a base64 PCM16 LE mono @24000Hz chunk, gaplessly and in order. */
   enqueue: (base64Pcm16: string) => void;
+  /**
+   * Resumes the output AudioContext. Must be called from the user gesture that
+   * starts the session, otherwise Chrome autoplay policy can leave the context
+   * suspended and every reply is silent.
+   */
+  resume: () => Promise<void>;
+  /** Current output AudioContext state, for diagnostics. */
+  state: () => string;
   /** Stop playback immediately and drop queued audio. Used for barge-in. */
   flush: () => void;
   dispose: () => void;

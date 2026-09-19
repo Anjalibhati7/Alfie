@@ -13,6 +13,7 @@ import {
   startMicCapture,
   type MicCapture,
 } from '../audio/transport';
+import { voiceDiag } from '../audio/diagnostics';
 import { resolveRealtimeUrl } from './config';
 
 export type RealtimeMode = 'Discover' | 'Reimagine';
@@ -74,6 +75,13 @@ const INITIAL_STATE: RealtimeState = {
   receivedDeltas: 0,
   closeCode: null,
 };
+
+/**
+ * Microphone level above which input_audio_buffer.speech_started is treated as a
+ * real person rather than the speaker output leaking into the microphone.
+ * levelOf() amplifies RMS by 4, so this is roughly 0.01 raw RMS.
+ */
+const ECHO_LEVEL_THRESHOLD = 0.04;
 
 /** Events we read fields from. Everything else is ignored on purpose. */
 type WireEvent = {
@@ -200,9 +208,27 @@ export function createRealtimeSession(
         return;
       }
 
-      case 'input_audio_buffer.speech_started':
-        // Barge-in: stop our own playback immediately. The provider has already
-        // cancelled its in-flight response.
+      case 'input_audio_buffer.speech_started': {
+        /**
+         * Barge-in. The provider has already cancelled its in-flight response,
+         * so local playback must stop too.
+         *
+         * The guard matters: with speakers rather than headphones, the
+         * microphone hears Alfie's own voice, which the provider reports as
+         * user speech. Flushing unconditionally then killed every reply a few
+         * milliseconds after it started, so the transcript appeared and nothing
+         * was audible. The microphone level is the tie-breaker: if the browser
+         * is not actually picking up sound, this was echo, not a person.
+         */
+        const likelyEcho = state.level <= ECHO_LEVEL_THRESHOLD;
+        if (likelyEcho) {
+          voiceDiag('barge_in.ignored_likely_echo', {
+            level: state.level,
+            threshold: ECHO_LEVEL_THRESHOLD,
+          });
+          return;
+        }
+        voiceDiag('barge_in.flush', { level: state.level });
         player.flush();
         if (activeAssistantId) {
           const turn = currentAssistantTurn();
@@ -216,6 +242,7 @@ export function createRealtimeSession(
         }
         emitState({ voice: 'Listening' });
         return;
+      }
 
       case 'input_audio_buffer.speech_stopped':
         emitState({ voice: 'Thinking' });
@@ -239,6 +266,20 @@ export function createRealtimeSession(
 
       case 'response.output_audio.delta': {
         if (typeof event.delta === 'string') {
+          const bytes = Math.floor((event.delta.length * 3) / 4);
+          if (state.receivedDeltas === 0) {
+            voiceDiag('HIGGS AUDIO DELTA RECEIVED (first)', {
+              chunkNumber: 1,
+              base64Chars: event.delta.length,
+              byteLength: bytes,
+              audioContextState: player.state(),
+            });
+          } else if ((state.receivedDeltas + 1) % 50 === 0) {
+            voiceDiag('HIGGS AUDIO DELTA RECEIVED', {
+              chunkNumber: state.receivedDeltas + 1,
+              byteLength: bytes,
+            });
+          }
           player.enqueue(event.delta);
           emitState({ receivedDeltas: state.receivedDeltas + 1 });
           if (state.voice !== 'Speaking') emitState({ voice: 'Speaking' });
@@ -310,6 +351,15 @@ export function createRealtimeSession(
     stopped = false;
     paused = false;
     emitState({ status: 'connecting', error: null, voice: 'Listening' });
+
+    /**
+     * Resume the speaker from this call, which runs synchronously inside the
+     * press that started the session. Chrome's autoplay policy only permits an
+     * AudioContext to leave "suspended" from a user gesture; resuming later,
+     * when the first audio delta arrives, is a request the browser can refuse —
+     * and the reply is then silent with no error anywhere.
+     */
+    void player.resume();
 
     const url = resolveRealtimeUrl(mode);
     let socket_: WebSocket;
